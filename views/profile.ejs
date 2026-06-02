@@ -110,7 +110,7 @@
             <% } %>
         </div>
 
-        <% if (isAdmin) { %>
+        <% if (isOwner) { %>
             <div class="admin-panel">
                 <h3>👑 Админ панель — все заказы</h3>
                 <div id="adminOrders"></div>
@@ -137,7 +137,7 @@
             }
         }
 
-        <% if (isAdmin) { %>
+        <% if (isOwner) { %>
             async function loadAdminOrders() {
                 const res = await fetch('/api/admin/orders');
                 const orders = await res.json();

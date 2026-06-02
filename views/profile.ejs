@@ -47,6 +47,7 @@
         }
         .confirm { background: #24af68; color: white; }
         .decline { background: #ff5555; color: white; }
+        .cancel { background: #ffaa00; color: white; }
         .logout-btn {
             display: inline-block;
             margin-top: 20px;
@@ -66,6 +67,7 @@
             <a href="/">Главная</a>
             <a href="/donate">Донат</a>
             <a href="/forum">Форум</a>
+            <a href="/profile">Профиль</a>
             <% if (user) { %>
                 <div class="user-menu">
                     <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar">
@@ -100,6 +102,9 @@
                         Сумма: <%= order.price %> ₽<br>
                         Статус: <strong><%= order.status %></strong><br>
                         Дата: <%= new Date(order.created_at).toLocaleString() %>
+                        <% if (order.status === 'pending' || order.status === 'waiting_confirmation') { %>
+                            <br><button class="cancel" onclick="cancelOrder(<%= order.id %>)">❌ Отменить заказ</button>
+                        <% } %>
                     </div>
                 <% }); %>
             <% } %>
@@ -116,6 +121,22 @@
     </div>
 
     <script>
+        async function cancelOrder(orderId) {
+            if (!confirm('Отменить заказ?')) return;
+            const res = await fetch('/api/cancel-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('Заказ отменён');
+                location.reload();
+            } else {
+                alert('Ошибка: ' + data.error);
+            }
+        }
+
         <% if (isAdmin) { %>
             async function loadAdminOrders() {
                 const res = await fetch('/api/admin/orders');

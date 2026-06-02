@@ -4,59 +4,18 @@
     <title>Профиль — Glow Worlds</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
-        .profile-page {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 20px;
-        }
-        .profile-header {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #24af68;
-        }
-        .profile-header img {
-            width: 100px;
-            border-radius: 50%;
-        }
-        .orders-section {
-            margin-top: 30px;
-        }
-        .order-card {
-            border: 1px solid #ddd;
-            border-radius: 15px;
-            padding: 15px;
-            margin: 15px 0;
-            background: #fafafa;
-        }
-        .admin-panel {
-            background: #f0f0f0;
-            padding: 20px;
-            border-radius: 15px;
-            margin-top: 30px;
-        }
-        button {
-            margin: 5px;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
+        .profile-page { max-width: 1200px; margin: 40px auto; padding: 20px; background: white; border-radius: 20px; }
+        .profile-header { display: flex; align-items: center; gap: 20px; padding-bottom: 20px; border-bottom: 2px solid #24af68; }
+        .profile-header img { width: 100px; border-radius: 50%; }
+        .orders-section { margin-top: 30px; }
+        .order-card { border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin: 15px 0; background: #fafafa; }
+        .admin-panel { background: #f0f0f0; padding: 20px; border-radius: 15px; margin-top: 30px; border: 2px solid #24af68; }
+        button { margin: 5px; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
         .confirm { background: #24af68; color: white; }
         .decline { background: #ff5555; color: white; }
         .cancel { background: #ffaa00; color: white; }
-        .logout-btn {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #ff5555;
-            color: white;
-            text-decoration: none;
-            border-radius: 10px;
-        }
+        .logout-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #ff5555; color: white; text-decoration: none; border-radius: 10px; }
+        .owner-badge { background: #24af68; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-left: 10px; }
     </style>
 </head>
 <body>
@@ -84,7 +43,11 @@
         <div class="profile-header">
             <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png">
             <div>
-                <h2><%= user.username %></h2>
+                <h2><%= user.username %> 
+                    <% if (isOwner) { %>
+                        <span class="owner-badge">👑 Владелец</span>
+                    <% } %>
+                </h2>
                 <p>Роль: <strong><%= user.role %></strong></p>
             </div>
         </div>
@@ -110,10 +73,13 @@
             <% } %>
         </div>
 
+        <!-- АДМИН ПАНЕЛЬ - видна только владельцу -->
         <% if (isOwner) { %>
             <div class="admin-panel">
                 <h3>👑 Админ панель — все заказы</h3>
-                <div id="adminOrders"></div>
+                <div id="adminOrders">
+                    <p>Загрузка заказов...</p>
+                </div>
             </div>
         <% } %>
 
@@ -139,24 +105,36 @@
 
         <% if (isOwner) { %>
             async function loadAdminOrders() {
-                const res = await fetch('/api/admin/orders');
-                const orders = await res.json();
-                const container = document.getElementById('adminOrders');
-                if (!container) return;
-                container.innerHTML = orders.map(order => `
-                    <div class="order-card">
-                        <strong>Заказ #${order.id}</strong><br>
-                        Discord: ${order.discord_name}<br>
-                        Minecraft ник: ${order.minecraft_nick}<br>
-                        Товар: ${order.product_type}<br>
-                        Сумма: ${order.price} ₽<br>
-                        Статус: <strong>${order.status}</strong><br>
-                        ${order.status === 'waiting_confirmation' ? `
-                            <button class="confirm" onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
-                            <button class="decline" onclick="declineOrder(${order.id})">❌ Отклонить</button>
-                        ` : ''}
-                    </div>
-                `).join('');
+                try {
+                    const res = await fetch('/api/admin/orders');
+                    const orders = await res.json();
+                    const container = document.getElementById('adminOrders');
+                    if (!container) return;
+                    
+                    if (orders.length === 0) {
+                        container.innerHTML = '<p>Нет заказов</p>';
+                        return;
+                    }
+                    
+                    container.innerHTML = orders.map(order => `
+                        <div class="order-card">
+                            <strong>Заказ #${order.id}</strong><br>
+                            👤 Discord: ${order.discord_name}<br>
+                            🎮 Minecraft ник: ${order.minecraft_nick}<br>
+                            📦 Товар: ${order.product_type}<br>
+                            💵 Сумма: ${order.price} ₽<br>
+                            📅 Создан: ${new Date(order.created_at).toLocaleString()}<br>
+                            📊 Статус: <strong>${order.status}</strong><br>
+                            ${order.status === 'waiting_confirmation' ? `
+                                <button class="confirm" onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
+                                <button class="decline" onclick="declineOrder(${order.id})">❌ Отклонить</button>
+                            ` : ''}
+                        </div>
+                    `).join('');
+                } catch (err) {
+                    console.error('Ошибка загрузки заказов:', err);
+                    document.getElementById('adminOrders').innerHTML = '<p style="color:red;">Ошибка загрузки заказов</p>';
+                }
             }
             
             async function confirmOrder(id) {
@@ -166,6 +144,7 @@
                     body: JSON.stringify({ orderId: id })
                 });
                 loadAdminOrders();
+                location.reload();
             }
             
             async function declineOrder(id) {
@@ -175,6 +154,7 @@
                     body: JSON.stringify({ orderId: id })
                 });
                 loadAdminOrders();
+                location.reload();
             }
             
             loadAdminOrders();

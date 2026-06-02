@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Glow Worlds</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" href="/images/crystal.png">
+</head>
+<body>
+    <header>
+        <img src="/images/icon.png" alt="Logo" class="logo">
+        <h1>Glow Worlds</h1>
+        <nav>
+            <a href="/">Главная</a>
+            <a href="/donate">Донат</a>
+            <a href="/forum">Форум</a>
+        </nav>
+    </header>
+
+    <img src="/images/home.png" alt="Banner" class="banner">
+
+    <div class="server-card">
+        <img src="/images/sword.png" alt="Server Icon">
+        <h2>Glow Vanilla</h2>
+        <p>Java Edition 1.20+</p>
+        <div class="online">🟢 Онлайн: <span id="online-count">0</span> / 20</div>
+        <button onclick="copyIP()">📋 Копировать IP</button>
+    </div>
+
+    <script>
+        function copyIP() {
+            navigator.clipboard.writeText('play.glow-worlds.ru');
+            alert('IP скопирован: play.glow-worlds.ru');
+        }
+        fetch('/api/online')
+            .then(res => res.json())
+            .then(data => document.getElementById('online-count').textContent = data.online);
+    </script>
+</body>
+</html>

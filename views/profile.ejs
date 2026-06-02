@@ -1,165 +1,38 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Профиль — Glow Worlds</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .profile-page { max-width: 1200px; margin: 40px auto; padding: 20px; background: white; border-radius: 20px; }
-        .profile-header { display: flex; align-items: center; gap: 20px; padding-bottom: 20px; border-bottom: 2px solid #24af68; }
-        .profile-header img { width: 100px; border-radius: 50%; }
-        .orders-section { margin-top: 30px; }
-        .order-card { border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin: 15px 0; background: #fafafa; }
-        .admin-panel { background: #f0f0f0; padding: 20px; border-radius: 15px; margin-top: 30px; border: 2px solid #24af68; }
-        button { margin: 5px; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
-        .confirm { background: #24af68; color: white; }
-        .decline { background: #ff5555; color: white; }
-        .cancel { background: #ffaa00; color: white; }
-        .logout-btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #ff5555; color: white; text-decoration: none; border-radius: 10px; }
-        .owner-badge { background: #24af68; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-left: 10px; }
-    </style>
-</head>
+<head><title>Профиль</title><link rel="stylesheet" href="/css/style.css"></head>
 <body>
     <header>
-        <img src="/images/icon.png" class="logo">
-        <h1>Glow Worlds</h1>
-        <nav>
-            <a href="/">Главная</a>
-            <a href="/donate">Донат</a>
-            <a href="/forum">Форум</a>
-            <a href="/profile">Профиль</a>
-            <% if (user) { %>
-                <div class="user-menu">
-                    <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar">
-                    <span><%= user.username %></span>
-                    <a href="/logout">Выйти</a>
-                </div>
-            <% } else { %>
-                <a href="/auth/discord" class="login-btn">Войти через Discord</a>
-            <% } %>
+        <img src="/images/icon.png" class="logo"><h1>Glow Worlds</h1>
+        <nav><a href="/">Главная</a><a href="/donate">Донат</a><a href="/forum">Форум</a><a href="/profile">Профиль</a>
+        <% if (user && user.isOwner) { %><a href="/admin-panel" class="login-btn">👑 Админка</a><% } %>
+        <% if (user) { %>
+            <div class="user-menu"><img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar"><span><%= user.username %></span><a href="/logout">Выйти</a></div>
+        <% } else { %><a href="/auth/discord" class="login-btn">Войти через Discord</a><% } %>
         </nav>
     </header>
-
-    <div class="profile-page">
-        <div class="profile-header">
-            <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png">
-            <div>
-                <h2><%= user.username %> 
-                    <% if (isOwner) { %>
-                        <span class="owner-badge">👑 Владелец</span>
-                    <% } %>
-                </h2>
-                <p>Роль: <strong><%= user.role %></strong></p>
+    <div class="profile-page" style="max-width:1000px;margin:40px auto;background:white;border-radius:20px;padding:20px">
+        <h2>Мои заказы</h2>
+        <% if (orders.length === 0) { %><p>Нет заказов</p>
+        <% } else { orders.forEach(order => { %>
+            <div style="border:1px solid #ddd;border-radius:10px;padding:15px;margin:10px 0">
+                <strong>#<%= order.id %></strong> | <%= order.product_type %> | <%= order.price %>₽ | Статус: <%= order.status %><br>
+                Minecraft ник: <%= order.minecraft_nick %><br>
+                Дата: <%= new Date(order.created_at).toLocaleString() %>
+                <% if (order.status === 'confirmed' || order.status === 'cancelled') { %>
+                    <br><button onclick="deleteOrder(<%= order.id %>)">🗑️ Удалить заказ</button>
+                <% } %>
             </div>
-        </div>
-
-        <div class="orders-section">
-            <h3>📦 Мои заказы</h3>
-            <% if (orders.length === 0) { %>
-                <p>У вас ещё нет заказов</p>
-            <% } else { %>
-                <% orders.forEach(order => { %>
-                    <div class="order-card">
-                        <strong>Заказ #<%= order.id %></strong><br>
-                        Minecraft ник: <%= order.minecraft_nick %><br>
-                        Товар: <%= order.product_type %><br>
-                        Сумма: <%= order.price %> ₽<br>
-                        Статус: <strong><%= order.status %></strong><br>
-                        Дата: <%= new Date(order.created_at).toLocaleString() %>
-                        <% if (order.status === 'pending' || order.status === 'waiting_confirmation') { %>
-                            <br><button class="cancel" onclick="cancelOrder(<%= order.id %>)">❌ Отменить заказ</button>
-                        <% } %>
-                    </div>
-                <% }); %>
-            <% } %>
-        </div>
-
-        <!-- АДМИН ПАНЕЛЬ - видна только владельцу -->
-        <% if (isOwner) { %>
-            <div class="admin-panel">
-                <h3>👑 Админ панель — все заказы</h3>
-                <div id="adminOrders">
-                    <p>Загрузка заказов...</p>
-                </div>
-            </div>
-        <% } %>
-
-        <a href="/logout" class="logout-btn">🚪 Выйти из аккаунта</a>
+        <% }) } %>
+        <a href="/logout" style="display:inline-block;margin-top:20px;background:#ff5555;color:white;padding:10px 20px;border-radius:10px">Выйти</a>
     </div>
-
     <script>
-        async function cancelOrder(orderId) {
-            if (!confirm('Отменить заказ?')) return;
-            const res = await fetch('/api/cancel-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderId })
-            });
-            const data = await res.json();
-            if (data.success) {
-                alert('Заказ отменён');
-                location.reload();
-            } else {
-                alert('Ошибка: ' + data.error);
-            }
+        async function deleteOrder(id) {
+            if (!confirm('Удалить заказ?')) return;
+            const res = await fetch(`/api/delete-order/${id}`, { method: 'DELETE' });
+            if (res.ok) location.reload();
+            else alert('Ошибка удаления');
         }
-
-        <% if (isOwner) { %>
-            async function loadAdminOrders() {
-                try {
-                    const res = await fetch('/api/admin/orders');
-                    const orders = await res.json();
-                    const container = document.getElementById('adminOrders');
-                    if (!container) return;
-                    
-                    if (orders.length === 0) {
-                        container.innerHTML = '<p>Нет заказов</p>';
-                        return;
-                    }
-                    
-                    container.innerHTML = orders.map(order => `
-                        <div class="order-card">
-                            <strong>Заказ #${order.id}</strong><br>
-                            👤 Discord: ${order.discord_name}<br>
-                            🎮 Minecraft ник: ${order.minecraft_nick}<br>
-                            📦 Товар: ${order.product_type}<br>
-                            💵 Сумма: ${order.price} ₽<br>
-                            📅 Создан: ${new Date(order.created_at).toLocaleString()}<br>
-                            📊 Статус: <strong>${order.status}</strong><br>
-                            ${order.status === 'waiting_confirmation' ? `
-                                <button class="confirm" onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
-                                <button class="decline" onclick="declineOrder(${order.id})">❌ Отклонить</button>
-                            ` : ''}
-                        </div>
-                    `).join('');
-                } catch (err) {
-                    console.error('Ошибка загрузки заказов:', err);
-                    document.getElementById('adminOrders').innerHTML = '<p style="color:red;">Ошибка загрузки заказов</p>';
-                }
-            }
-            
-            async function confirmOrder(id) {
-                await fetch('/api/admin/confirm-order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orderId: id })
-                });
-                loadAdminOrders();
-                location.reload();
-            }
-            
-            async function declineOrder(id) {
-                await fetch('/api/admin/decline-order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orderId: id })
-                });
-                loadAdminOrders();
-                location.reload();
-            }
-            
-            loadAdminOrders();
-            setInterval(loadAdminOrders, 5000);
-        <% } %>
     </script>
 </body>
 </html>

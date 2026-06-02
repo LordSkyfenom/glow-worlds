@@ -74,12 +74,15 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === Роуты ===
+// === Роуты страниц ===
 app.get('/', async (req, res) => {
   const servers = await pool.query('SELECT * FROM servers WHERE active = true ORDER BY id');
   res.render('index', { user: req.user, servers: servers.rows });
 });
-app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
+app.get('/donate', async (req, res) => {
+  const products = await pool.query('SELECT * FROM donate_products ORDER BY id');
+  res.render('donate', { user: req.user, products: products.rows });
+});
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
@@ -135,7 +138,7 @@ app.post('/api/mark-as-paid', async (req, res) => {
   res.json({ success: true });
 });
 
-// === API: админка ===
+// === API: админка заказы ===
 app.get('/api/admin/orders', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
@@ -152,7 +155,12 @@ app.post('/api/admin/decline-order', async (req, res) => {
   res.json({ success: true });
 });
 
-// === CRUD товаров доната ===
+// === API: админка товары доната ===
+app.get('/api/admin/products', async (req, res) => {
+  if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
+  const products = await pool.query('SELECT * FROM donate_products ORDER BY id');
+  res.json(products.rows);
+});
 app.post('/api/admin/add-product', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, price, description, image_url } = req.body;
@@ -171,11 +179,16 @@ app.delete('/api/admin/delete-product/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// === CRUD серверов ===
+// === API: админка сервера ===
+app.get('/api/admin/servers', async (req, res) => {
+  if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
+  const servers = await pool.query('SELECT * FROM servers ORDER BY id');
+  res.json(servers.rows);
+});
 app.post('/api/admin/add-server', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, ip, version, icon_url } = req.body;
-  await pool.query('INSERT INTO servers (name, ip, version, icon_url) VALUES ($1, $2, $3, $4)', [name, ip, version, icon_url]);
+  await pool.query('INSERT INTO servers (name, ip, version, icon_url, active) VALUES ($1, $2, $3, $4, true)', [name, ip, version, icon_url]);
   res.json({ success: true });
 });
 app.put('/api/admin/update-server/:id', async (req, res) => {
@@ -192,5 +205,46 @@ app.delete('/api/admin/delete-server/:id', async (req, res) => {
 
 app.get('/api/online', (req, res) => res.json({ online: 0, max: 20 }));
 
+// === API: сообщения форума ===
+app.get('/api/messages', async (req, res) => {
+  const { category } = req.query;
+  if (!category) return res.status(400).json({ error: 'Category required' });
+  const result = await pool.query(`
+    SELECT fm.*, u.username, u.avatar, u.discord_id
+    FROM forum_messages fm
+    JOIN users u ON fm.user_id = u.id
+    WHERE fm.category = $1 AND fm.is_deleted = false
+    ORDER BY fm.created_at ASC
+  `, [category]);
+  res.json(result.rows);
+});
+app.post('/api/messages', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { category, message } = req.body;
+  const userResult = await pool.query('SELECT id FROM users WHERE discord_id = $1', [req.user.id]);
+  if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+  await pool.query('INSERT INTO forum_messages (user_id, category, message) VALUES ($1, $2, $3)', [userResult.rows[0].id, category, message]);
+  res.json({ success: true });
+});
+app.delete('/api/messages/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const messageResult = await pool.query('SELECT * FROM forum_messages WHERE id = $1', [req.params.id]);
+  if (messageResult.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+  const userResult = await pool.query('SELECT id, role FROM users WHERE discord_id = $1', [req.user.id]);
+  const userId = userResult.rows[0].id;
+  const userRole = userResult.rows[0].role;
+  const isOwner = messageResult.rows[0].user_id === userId;
+  const isModerator = ['Helper', 'Moderator', 'Sr.Moderator', 'Curator', 'Team', 'Leadership'].includes(userRole);
+  const isAdmin = req.user.isOwner === true;
+  if (isOwner || isModerator || isAdmin) {
+    await pool.query('UPDATE forum_messages SET is_deleted = true WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } else {
+    res.status(403).json({ error: 'No permission' });
+  }
+});
+
 // === Запуск ===
-app.listen(port, () => console.log(`✅ Сервер на порту ${port}`));
+app.listen(port, () => {
+  console.log(`✅ Сервер Glow Worlds запущен на порту ${port}`);
+});

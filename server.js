@@ -5,12 +5,8 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
-const http = require('http');
-const socketIo = require('socket.io');
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
 const port = process.env.PORT || 3000;
 
 // База данных
@@ -21,6 +17,7 @@ const pool = new Pool({
 
 // Настройки
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -64,6 +61,7 @@ passport.use(new DiscordStrategy({
       role: role
     });
   } catch (err) {
+    console.error(err);
     return done(err, null);
   }
 }));
@@ -83,7 +81,7 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// API сообщений
+// API: получить сообщения
 app.get('/api/messages', async (req, res) => {
   const { category } = req.query;
   if (!category) return res.json([]);
@@ -97,78 +95,86 @@ app.get('/api/messages', async (req, res) => {
     `, [category]);
     res.json(result.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// API: отправить сообщение
 app.post('/api/messages', async (req, res) => {
-  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  console.log('📨 POST /api/messages вызван');
+  console.log('📦 Тело запроса:', req.body);
+  console.log('👤 Пользователь:', req.user);
+
+  if (!req.user) {
+    console.log('❌ Нет пользователя');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const { category, message } = req.body;
+  if (!category || !message) {
+    console.log('❌ Нет category или message');
+    return res.status(400).json({ error: 'Missing category or message' });
+  }
+
   try {
     const userResult = await pool.query('SELECT id FROM users WHERE discord_id = $1', [req.user.id]);
+    console.log('🔍 Результат поиска пользователя:', userResult.rows);
+
+    if (userResult.rows.length === 0) {
+      console.log('❌ Пользователь не найден в БД');
+      return res.status(404).json({ error: 'User not found in DB' });
+    }
+
     const userId = userResult.rows[0].id;
+    console.log('👤 userId:', userId);
+
     await pool.query(
       'INSERT INTO forum_messages (user_id, category, message) VALUES ($1, $2, $3)',
       [userId, category, message]
     );
-    io.emit('new-message', { category });
+    console.log('✅ Сообщение сохранено в БД');
+
     res.json({ success: true });
   } catch (err) {
+    console.error('❌ Ошибка сохранения:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// API: удалить сообщение
 app.delete('/api/messages/:id', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+
   try {
     const message = await pool.query('SELECT * FROM forum_messages WHERE id = $1', [req.params.id]);
     if (message.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    
+
     const userResult = await pool.query('SELECT id, role FROM users WHERE discord_id = $1', [req.user.id]);
     const userId = userResult.rows[0].id;
     const userRole = userResult.rows[0].role;
     const isModerator = ['Helper', 'Moderator', 'Sr.Moderator', 'Curator', 'Team', 'Leadership'].includes(userRole);
     const isOwner = message.rows[0].user_id === userId;
     const isAdmin = req.user.id === process.env.ADMIN_DISCORD_ID;
-    
+
     if (isOwner || isModerator || isAdmin) {
       await pool.query('UPDATE forum_messages SET is_deleted = true WHERE id = $1', [req.params.id]);
-      io.emit('message-deleted', { category: message.rows[0].category });
       res.json({ success: true });
     } else {
       res.status(403).json({ error: 'No permission' });
     }
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/online', (req, res) => res.json({ online: 0, max: 20 }));
-
-// Socket.io
-let onlineUsers = 0;
-io.on('connection', (socket) => {
-  onlineUsers++;
-  io.emit('online-count', onlineUsers);
-  
-  socket.on('join-category', (category) => {
-    socket.join(category);
-  });
-  
-  socket.on('new-message', (data) => {
-    io.emit('new-message', data);
-  });
-  
-  socket.on('delete-message', (data) => {
-    io.emit('message-deleted', data);
-  });
-  
-  socket.on('disconnect', () => {
-    onlineUsers--;
-    io.emit('online-count', onlineUsers);
-  });
+// API: онлайн (заглушка)
+app.get('/api/online', (req, res) => {
+  res.json({ online: 0, max: 20 });
 });
 
-server.listen(port, () => {
-  console.log(`✅ Сервер на порту ${port}`);
+// Запуск сервера
+app.listen(port, () => {
+  console.log(`✅ Сервер запущен на порту ${port}`);
 });

@@ -16,7 +16,7 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === Discord бот для уведомлений (только текст) ===
+// === Discord бот для уведомлений ===
 const discordBot = new Client({ intents: [] });
 
 discordBot.once('ready', () => {
@@ -85,12 +85,19 @@ app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
-// === Админка (только для админа) ===
-app.get('/admin', (req, res) => {
-  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
-    return res.status(403).send('Доступ запрещён');
+// === Профиль (и админка внутри) ===
+app.get('/profile', async (req, res) => {
+  if (!req.user) return res.redirect('/auth/discord');
+  
+  const isAdmin = (req.user.id === process.env.ADMIN_DISCORD_ID);
+  
+  if (isAdmin) {
+    const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    return res.render('profile', { user: req.user, isAdmin: true, orders: orders.rows });
+  } else {
+    const orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    return res.render('profile', { user: req.user, isAdmin: false, orders: orders.rows });
   }
-  res.render('admin', { user: req.user });
 });
 
 // === Discord авторизация ===
@@ -122,7 +129,9 @@ app.post('/create-order', async (req, res) => {
     );
     const orderId = result.rows[0].id;
     
-    res.json({ orderId, success: true });
+    const paymentUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.YMONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${orderId}&sum=${price}&comment=order_${orderId}&successURL=${process.env.BASE_URL}/donate`;
+    
+    res.json({ orderId, price, paymentUrl, success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -143,7 +152,7 @@ app.post('/api/mark-as-paid', async (req, res) => {
     
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['waiting_confirmation', orderId]);
     
-    // Отправляем уведомление админу в Discord (только текст)
+    // Уведомление админу в Discord
     if (discordBot && process.env.DISCORD_ADMIN_ID) {
       try {
         const adminUser = await discordBot.users.fetch(process.env.DISCORD_ADMIN_ID);
@@ -159,7 +168,7 @@ app.post('/api/mark-as-paid', async (req, res) => {
               { name: '💵 Сумма', value: `${order.rows[0].price} ₽`, inline: true }
             )
             .setTimestamp()
-            .setFooter({ text: 'Зайдите в админку на сайте, чтобы подтвердить или отклонить заказ.' });
+            .setFooter({ text: 'Зайдите в профиль на сайте, чтобы подтвердить или отклонить заказ.' });
           
           await adminUser.send({ embeds: [embed] });
           console.log(`✅ Уведомление админу о заказе #${orderId}`);
@@ -177,25 +186,12 @@ app.post('/api/mark-as-paid', async (req, res) => {
 });
 
 // === АДМИНКА API ===
-app.get('/api/admin/orders', async (req, res) => {
-  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-  res.json(orders.rows);
-});
-
 app.post('/api/admin/confirm-order', async (req, res) => {
   if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { orderId } = req.body;
   await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
-  
-  // TODO: выдать роль в Discord и команду на сервер через RCON
-  // await giveDiscordRole(orderId);
-  // await sendRconCommand(orderId);
-  
   res.json({ success: true });
 });
 
@@ -227,7 +223,6 @@ app.get('/api/messages', async (req, res) => {
   }
 });
 
-// === API: отправить сообщение ===
 app.post('/api/messages', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -248,7 +243,6 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
-// === API: удалить сообщение ===
 app.delete('/api/messages/:id', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -274,12 +268,10 @@ app.delete('/api/messages/:id', async (req, res) => {
   }
 });
 
-// === API: онлайн ===
 app.get('/api/online', (req, res) => {
   res.json({ online: 0, max: 20 });
 });
 
-// === Запуск сервера ===
 app.listen(port, () => {
   console.log(`✅ Сервер Glow Worlds запущен на порту ${port}`);
 });

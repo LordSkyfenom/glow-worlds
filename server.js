@@ -66,21 +66,18 @@ passport.use(new DiscordStrategy({
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
         const member = await guild.members.fetch(profile.id);
         
-        // Получаем все роли, сортируем по позиции
         const sortedRoles = member.roles.cache
           .filter(role => role.name !== '@everyone')
           .sort((a, b) => b.position - a.position);
         
         allRoles = sortedRoles.map(r => ({ id: r.id, name: r.name, position: r.position }));
         
-        // Самая высшая роль — первая в отсортированном списке
         const highestRole = sortedRoles.first();
         if (highestRole) {
           highestRoleName = highestRole.name;
           highestRolePosition = highestRole.position;
         }
         
-        // Проверяем, есть ли у пользователя роль владельца
         isOwner = sortedRoles.some(role => role.id === process.env.DISCORD_OWNER_ROLE_ID);
         
         console.log(`👤 ${profile.username}`);
@@ -95,7 +92,6 @@ passport.use(new DiscordStrategy({
       console.log(`⚠️ Бот или GUILD_ID не настроены для пользователя ${profile.username}`);
     }
     
-    // Сохраняем или обновляем пользователя в БД
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     
     if (result.rows.length === 0) {
@@ -123,12 +119,39 @@ passport.use(new DiscordStrategy({
   }
 }));
 
+// === ОТЛАДОЧНЫЙ МАРШРУТ ===
+app.get('/debug-guild', async (req, res) => {
+  if (!req.user) return res.status(401).send('Не авторизован. <a href="/auth/discord">Войдите через Discord</a>');
+  
+  try {
+    if (!discordBot || !discordBot.isReady()) {
+      return res.json({ error: 'Discord бот не готов или не запущен' });
+    }
+    
+    const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(req.user.id);
+    const roles = member.roles.cache.map(r => ({ id: r.id, name: r.name, position: r.position }));
+    
+    res.json({
+      guildName: guild.name,
+      guildId: guild.id,
+      memberName: member.user.username,
+      memberId: member.id,
+      roles: roles.sort((a, b) => b.position - a.position),
+      isOwner: roles.some(r => r.id === process.env.DISCORD_OWNER_ROLE_ID),
+      ownerRoleId: process.env.DISCORD_OWNER_ROLE_ID
+    });
+  } catch (err) {
+    res.json({ error: err.message, stack: err.stack });
+  }
+});
+
 // === Роуты страниц ===
 app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
-// === Профиль (админка для владельца по роли) ===
+// === Профиль ===
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
@@ -200,7 +223,7 @@ app.post('/api/mark-as-paid', async (req, res) => {
     
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['waiting_confirmation', orderId]);
     
-    // Уведомление владельцу в Discord (по роли)
+    // Уведомление владельцу в Discord
     if (discordBot && process.env.DISCORD_OWNER_ROLE_ID && process.env.DISCORD_GUILD_ID) {
       try {
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
@@ -262,7 +285,7 @@ app.post('/api/cancel-order', async (req, res) => {
   }
 });
 
-// === АДМИНКА API (только для владельца по роли) ===
+// === АДМИНКА API ===
 app.get('/api/admin/orders', async (req, res) => {
   if (!req.user || !req.user.isOwner) {
     return res.status(403).json({ error: 'Forbidden' });
@@ -280,7 +303,6 @@ app.post('/api/admin/confirm-order', async (req, res) => {
   try {
     await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
     
-    // Выдача роли спонсора в Discord
     const order = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
     if (order.rows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_ROLE_SPONSOR) {
       try {
@@ -312,7 +334,7 @@ app.post('/api/admin/decline-order', async (req, res) => {
   res.json({ success: true });
 });
 
-// === API: получить сообщения форума ===
+// === API форума ===
 app.get('/api/messages', async (req, res) => {
   const { category } = req.query;
   if (!category) return res.status(400).json({ error: 'Category required' });

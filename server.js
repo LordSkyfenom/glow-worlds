@@ -5,8 +5,7 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
-const TelegramBot = require('node-telegram-bot-api');
-const crypto = require('crypto');
+const { Client, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,27 +16,15 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === Телеграм бот ===
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+// === Discord бот для уведомлений ===
+const discordBot = new Client({ intents: [] });
 
-// Обработка кнопок от Telegram
-bot.on('callback_query', async (query) => {
-  const [action, orderId] = query.data.split(':');
-  const chatId = query.message.chat.id;
+discordBot.once('ready', () => {
+  console.log('🤖 Discord бот для уведомлений запущен');
+});
 
-  if (action === 'confirm') {
-    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['confirmed', orderId]);
-    await bot.sendMessage(chatId, `✅ Заказ #${orderId} подтверждён!`);
-    
-    // Здесь добавишь выдачу роли в Discord и команды на сервер
-    // await giveRoleInDiscord(orderId);
-    // await sendRconCommand(orderId);
-  } else if (action === 'decline') {
-    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId]);
-    await bot.sendMessage(chatId, `❌ Заказ #${orderId} отклонён.`);
-  }
-  
-  await bot.answerCallbackQuery(query.id);
+discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
+  console.error('❌ Ошибка входа Discord бота:', err.message);
 });
 
 // === Настройки Express ===
@@ -109,7 +96,7 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// === ДОНАТ: создание заказа ===
+// === ДОНАТ: создание заказа с уведомлением в ЛС Discord ===
 app.post('/create-order', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -127,20 +114,68 @@ app.post('/create-order', async (req, res) => {
     );
     const orderId = result.rows[0].id;
     
-    // Отправляем уведомление в Telegram
-    const message = `🆕 Новый заказ #${orderId}\n👤 ${req.user.username}\n🎮 Ник: ${minecraft_nick}\n📦 Товар: ${product}\n💰 ${price}₽`;
-    await bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '✅ Подтвердить', callback_data: `confirm:${orderId}` },
-          { text: '❌ Отклонить', callback_data: `decline:${orderId}` }
-        ]]
+    // Отправляем уведомление в ЛС админу в Discord
+    if (discordBot && process.env.DISCORD_ADMIN_ID) {
+      try {
+        const adminUser = await discordBot.users.fetch(process.env.DISCORD_ADMIN_ID);
+        if (adminUser) {
+          const embed = new EmbedBuilder()
+            .setColor(0x24af68)
+            .setTitle('🆕 Новый заказ в донате!')
+            .addFields(
+              { name: '📦 Заказ #', value: `${orderId}`, inline: true },
+              { name: '💰 Товар', value: `${product}`, inline: true },
+              { name: '💵 Сумма', value: `${price} ₽`, inline: true },
+              { name: '👤 Discord', value: `${req.user.username}`, inline: true },
+              { name: '🎮 Minecraft ник', value: `${minecraft_nick}`, inline: true }
+            )
+            .setTimestamp();
+          
+          const row = new ActionRowBuilder()
+            .addComponents(
+              new ButtonBuilder()
+                .setCustomId(`confirm_order_${orderId}`)
+                .setLabel('✅ Подтвердить')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`decline_order_${orderId}`)
+                .setLabel('❌ Отклонить')
+                .setStyle(ButtonStyle.Danger)
+            );
+          
+          await adminUser.send({ embeds: [embed], components: [row] });
+          console.log(`✅ Уведомление отправлено админу о заказе #${orderId}`);
+        }
+      } catch (err) {
+        console.error('❌ Ошибка отправки в ЛС:', err.message);
       }
-    });
+    }
     
     res.json({ orderId, redirectUrl: `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.YMONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${orderId}&sum=${price}&comment=order_${orderId}&successURL=${process.env.BASE_URL}/donate?success=true` });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Обработка кнопок подтверждения заказа (через API) ===
+app.post('/api/confirm-order', async (req, res) => {
+  const { orderId, action, adminId } = req.body;
+  
+  if (adminId !== process.env.DISCORD_ADMIN_ID) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  try {
+    if (action === 'confirm') {
+      await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['confirmed', orderId]);
+      console.log(`✅ Заказ #${orderId} подтверждён админом`);
+    } else if (action === 'decline') {
+      await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId]);
+      console.log(`❌ Заказ #${orderId} отклонён админом`);
+    }
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

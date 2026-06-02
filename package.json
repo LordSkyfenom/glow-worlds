@@ -1,6 +1,7 @@
 {
   "name": "glow-worlds",
   "version": "1.0.0",
+  "description": "Minecraft server Glow Worlds",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

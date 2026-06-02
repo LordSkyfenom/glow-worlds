@@ -4,6 +4,116 @@
     <title>Glow Worlds</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="/images/crystal.png">
+    <style>
+        .about-section {
+            background: #f5f5f5;
+            border-radius: 30px;
+            padding: 40px;
+            margin: 40px auto;
+            max-width: 1200px;
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        .about-text {
+            flex: 1;
+            min-width: 250px;
+        }
+        .about-text h2 {
+            color: #24af68;
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+        .about-text p {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .about-image {
+            flex: 1;
+            min-width: 250px;
+            text-align: center;
+        }
+        .about-image img {
+            max-width: 100%;
+            border-radius: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .servers-container {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+            margin: 40px auto;
+            max-width: 1200px;
+        }
+        .server-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            width: 280px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .server-card:hover {
+            transform: translateY(-5px);
+        }
+        .server-card img {
+            width: 80px;
+            margin-bottom: 15px;
+        }
+        .server-card h2 {
+            color: #24af68;
+            margin-bottom: 10px;
+        }
+        .server-card button {
+            background: #24af68;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-size: 16px;
+        }
+        .server-card button:hover {
+            background: #447008;
+        }
+        .online {
+            margin: 15px 0;
+            font-size: 1.1em;
+        }
+        .online-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #24af68;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+        .discord-btn {
+            display: inline-block;
+            background: #24af68;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        .discord-btn:hover {
+            background: #447008;
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -28,16 +138,40 @@
 
     <img src="/images/home.png" alt="Banner" class="banner">
 
-    <div class="servers-container" style="display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin: 40px auto; max-width: 1200px;">
+    <div class="servers-container">
         <% servers.forEach(server => { %>
-            <div class="server-card" style="background: white; border-radius: 20px; padding: 30px; text-align: center; width: 280px; box-shadow: 0 5px 20px rgba(0,0,0,0.1);">
-                <img src="<%= server.icon_url %>" alt="<%= server.name %>" style="width: 80px; margin-bottom: 15px;">
-                <h2 style="color: #24af68;"><%= server.name %></h2>
+            <div class="server-card">
+                <img src="<%= server.icon_url %>" alt="<%= server.name %>">
+                <h2><%= server.name %></h2>
                 <p><%= server.version %></p>
-                <div class="online">🟢 Онлайн: <span class="online-count" data-server-id="<%= server.id %>">0</span> / 20</div>
+                <div class="online">
+                    <span class="online-dot"></span>
+                    Онлайн: <span class="online-count" data-server-id="<%= server.id %>">0</span> / 20
+                </div>
                 <button onclick="copyIP('<%= server.ip %>')">📋 Копировать IP</button>
             </div>
         <% }); %>
+    </div>
+
+    <!-- Блок О нас -->
+    <div class="about-section">
+        <div class="about-text">
+            <h2>🌟 О нас</h2>
+            <p><strong>Glow Worlds</strong> — это сеть серверов Minecraft с уникальной атмосферой и разнообразными режимами игры.</p>
+            <p>Что тебя ждёт:</p>
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>🎮 Разные режимы игры — от ванильного выживания до уникальных проектов</li>
+                <li>🕯️ Ламповая атмосфера и дружелюбное комьюнити</li>
+                <li>🧱 Строй, исследуй и развивайся без ограничений</li>
+                <li>🎧 Активное Discord-сообщество без токсичности</li>
+                <li>✨ Постоянное развитие и новые сервера</li>
+            </ul>
+            <p>Присоединяйся к нам — стань частью яркого мира Glow Worlds!</p>
+            <a href="https://discord.gg/glow-vanilla" class="discord-btn" target="_blank">💬 Вступить в Discord</a>
+        </div>
+        <div class="about-image">
+            <img src="/images/homeicon.png" alt="О нас" id="aboutImage">
+        </div>
     </div>
 
     <script>
@@ -56,6 +190,11 @@
                 });
             } catch(e) { console.error('Ошибка обновления онлайна'); }
         }
+        
+        document.getElementById('aboutImage')?.addEventListener('error', function() {
+            this.src = '/images/home.png';
+            this.style.opacity = '0.7';
+        });
         
         updateOnline();
         setInterval(updateOnline, 30000);

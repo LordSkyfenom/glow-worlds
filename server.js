@@ -9,28 +9,28 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// База данных
+// === База данных ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Настройки
+// === Настройки Express ===
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Сессии
+// === Сессии ===
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'mysecret',
+  secret: process.env.SESSION_SECRET || 'mysecretkey',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false }
+  cookie: { secure: false, maxAge: 1000 * 60 * 60 * 24 * 7 }
 }));
 
-// Passport
+// === Passport Discord ===
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -46,6 +46,7 @@ passport.use(new DiscordStrategy({
   try {
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     let role = 'Player';
+    
     if (result.rows.length === 0) {
       await pool.query(
         'INSERT INTO users (discord_id, username, avatar, role) VALUES ($1, $2, $3, $4)',
@@ -54,6 +55,7 @@ passport.use(new DiscordStrategy({
     } else {
       role = result.rows[0].role;
     }
+    
     return done(null, {
       id: profile.id,
       username: profile.username,
@@ -61,16 +63,17 @@ passport.use(new DiscordStrategy({
       role: role
     });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Discord auth error:', err);
     return done(err, null);
   }
 }));
 
-// Роуты
+// === Роуты страниц ===
 app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
+// === Discord авторизация ===
 app.get('/auth/discord', passport.authenticate('discord'));
 app.get('/auth/discord/callback', 
   passport.authenticate('discord', { failureRedirect: '/' }),
@@ -81,10 +84,13 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// API: получить сообщения
+// === API: получить сообщения форума ===
 app.get('/api/messages', async (req, res) => {
   const { category } = req.query;
-  if (!category) return res.json([]);
+  if (!category) {
+    return res.status(400).json({ error: 'Category required' });
+  }
+  
   try {
     const result = await pool.query(`
       SELECT fm.*, u.username, u.avatar, u.discord_id
@@ -95,86 +101,83 @@ app.get('/api/messages', async (req, res) => {
     `, [category]);
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    console.error('❌ GET /api/messages error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// API: отправить сообщение
+// === API: отправить сообщение ===
 app.post('/api/messages', async (req, res) => {
-  console.log('📨 POST /api/messages вызван');
-  console.log('📦 Тело запроса:', req.body);
-  console.log('👤 Пользователь:', req.user);
-
+  console.log('📨 POST /api/messages');
+  console.log('👤 User:', req.user);
+  
   if (!req.user) {
-    console.log('❌ Нет пользователя');
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized. Please login via Discord.' });
   }
-
+  
   const { category, message } = req.body;
   if (!category || !message) {
-    console.log('❌ Нет category или message');
-    return res.status(400).json({ error: 'Missing category or message' });
+    return res.status(400).json({ error: 'Category and message are required.' });
   }
-
+  
   try {
     const userResult = await pool.query('SELECT id FROM users WHERE discord_id = $1', [req.user.id]);
-    console.log('🔍 Результат поиска пользователя:', userResult.rows);
-
     if (userResult.rows.length === 0) {
-      console.log('❌ Пользователь не найден в БД');
-      return res.status(404).json({ error: 'User not found in DB' });
+      return res.status(404).json({ error: 'User not found in database.' });
     }
-
+    
     const userId = userResult.rows[0].id;
-    console.log('👤 userId:', userId);
-
     await pool.query(
       'INSERT INTO forum_messages (user_id, category, message) VALUES ($1, $2, $3)',
       [userId, category, message]
     );
-    console.log('✅ Сообщение сохранено в БД');
-
+    
+    console.log('✅ Message saved');
     res.json({ success: true });
   } catch (err) {
-    console.error('❌ Ошибка сохранения:', err);
+    console.error('❌ POST /api/messages error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// API: удалить сообщение
+// === API: удалить сообщение ===
 app.delete('/api/messages/:id', async (req, res) => {
-  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
   try {
-    const message = await pool.query('SELECT * FROM forum_messages WHERE id = $1', [req.params.id]);
-    if (message.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-
+    const messageResult = await pool.query('SELECT * FROM forum_messages WHERE id = $1', [req.params.id]);
+    if (messageResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
     const userResult = await pool.query('SELECT id, role FROM users WHERE discord_id = $1', [req.user.id]);
     const userId = userResult.rows[0].id;
     const userRole = userResult.rows[0].role;
+    const isOwner = messageResult.rows[0].user_id === userId;
     const isModerator = ['Helper', 'Moderator', 'Sr.Moderator', 'Curator', 'Team', 'Leadership'].includes(userRole);
-    const isOwner = message.rows[0].user_id === userId;
     const isAdmin = req.user.id === process.env.ADMIN_DISCORD_ID;
-
+    
     if (isOwner || isModerator || isAdmin) {
       await pool.query('UPDATE forum_messages SET is_deleted = true WHERE id = $1', [req.params.id]);
       res.json({ success: true });
     } else {
-      res.status(403).json({ error: 'No permission' });
+      res.status(403).json({ error: 'No permission to delete this message' });
     }
   } catch (err) {
-    console.error(err);
+    console.error('❌ DELETE /api/messages error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// API: онлайн (заглушка)
+// === API: онлайн (заглушка) ===
 app.get('/api/online', (req, res) => {
   res.json({ online: 0, max: 20 });
 });
 
-// Запуск сервера
+// === Запуск сервера ===
 app.listen(port, () => {
-  console.log(`✅ Сервер запущен на порту ${port}`);
+  console.log(`✅ Сервер Glow Worlds запущен на порту ${port}`);
+  console.log(`🌐 Сайт доступен: http://localhost:${port}`);
 });

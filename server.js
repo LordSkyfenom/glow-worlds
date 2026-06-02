@@ -56,38 +56,55 @@ passport.use(new DiscordStrategy({
   scope: ['identify', 'guilds', 'guilds.members.read']
 }, async (accessToken, refreshToken, profile, done) => {
   try {
-    // Получаем роли пользователя на сервере
+    let highestRoleName = 'Player';
+    let highestRolePosition = -1;
     let isOwner = false;
-    if (discordBot && process.env.DISCORD_GUILD_ID && process.env.DISCORD_OWNER_ROLE_ID) {
+    
+    if (discordBot && process.env.DISCORD_GUILD_ID) {
       try {
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
         const member = await guild.members.fetch(profile.id);
-        const userRoles = member.roles.cache.map(role => role.id);
-        isOwner = userRoles.includes(process.env.DISCORD_OWNER_ROLE_ID);
-        console.log(`👤 ${profile.username} — роли: ${userRoles.join(', ')} | isOwner: ${isOwner}`);
+        
+        const sortedRoles = member.roles.cache.sort((a, b) => b.position - a.position);
+        
+        for (const [roleId, role] of sortedRoles) {
+          if (role.name === '@everyone') continue;
+          
+          if (highestRolePosition === -1) {
+            highestRoleName = role.name;
+            highestRolePosition = role.position;
+          }
+          
+          if (roleId === process.env.DISCORD_OWNER_ROLE_ID) {
+            isOwner = true;
+          }
+        }
+        
+        console.log(`👤 ${profile.username} — высшая роль: ${highestRoleName} (позиция ${highestRolePosition}) | isOwner: ${isOwner}`);
       } catch (err) {
         console.error('❌ Ошибка получения ролей:', err.message);
       }
     }
     
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
-    let role = 'Player';
     
     if (result.rows.length === 0) {
       await pool.query(
         'INSERT INTO users (discord_id, username, avatar, role, is_owner) VALUES ($1, $2, $3, $4, $5)',
-        [profile.id, profile.username, profile.avatar, role, isOwner]
+        [profile.id, profile.username, profile.avatar, highestRoleName, isOwner]
       );
     } else {
-      role = result.rows[0].role;
-      await pool.query('UPDATE users SET is_owner = $1 WHERE discord_id = $2', [isOwner, profile.id]);
+      await pool.query(
+        'UPDATE users SET username = $1, avatar = $2, role = $3, is_owner = $4 WHERE discord_id = $5',
+        [profile.username, profile.avatar, highestRoleName, isOwner, profile.id]
+      );
     }
     
     return done(null, {
       id: profile.id,
       username: profile.username,
       avatar: profile.avatar,
-      role: role,
+      role: highestRoleName,
       isOwner: isOwner
     });
   } catch (err) {
@@ -179,7 +196,7 @@ app.post('/api/mark-as-paid', async (req, res) => {
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
         const ownerRole = guild.roles.cache.get(process.env.DISCORD_OWNER_ROLE_ID);
         if (ownerRole) {
-          const channel = guild.systemChannel; // или укажи конкретный канал
+          const channel = guild.systemChannel;
           if (channel) {
             const embed = new EmbedBuilder()
               .setColor(0xFFA500)

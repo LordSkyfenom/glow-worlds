@@ -4,6 +4,28 @@
     <title>Форум — Glow Worlds</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="/images/crystal.png">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .chat-container { max-width: 800px; margin: 30px auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .category-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .cat-btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; background: #e0e0e0; font-weight: bold; transition: 0.3s; }
+        .cat-btn.active { background: #24af68; color: white; }
+        .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin-bottom: 20px; background: #fafafa; }
+        .message { margin-bottom: 15px; padding: 10px; background: white; border-radius: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: flex-start; }
+        .message-avatar { width: 45px; height: 45px; border-radius: 50%; margin-right: 12px; }
+        .message-content { flex-grow: 1; }
+        .message-username { font-weight: bold; color: #24af68; }
+        .message-time { font-size: 11px; color: #999; margin-left: 10px; }
+        .message-text { margin-top: 5px; word-wrap: break-word; }
+        .delete-btn { background: none; border: none; color: #ff5555; cursor: pointer; font-size: 18px; padding: 5px; border-radius: 50%; width: 30px; }
+        .delete-btn:hover { background: #ffeeee; }
+        .input-area { display: flex; gap: 10px; }
+        .input-area input { flex-grow: 1; padding: 12px; border: 1px solid #ccc; border-radius: 30px; font-size: 14px; }
+        .input-area button { background: #24af68; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        .input-area button:hover { background: #447008; }
+        .login-message { text-align: center; padding: 40px; background: #f9f9f9; border-radius: 20px; }
+        .online-count { font-size: 14px; color: #24af68; margin-left: 10px; }
+    </style>
 </head>
 <body>
     <header>
@@ -13,12 +35,162 @@
             <a href="/">Главная</a>
             <a href="/donate">Донат</a>
             <a href="/forum">Форум</a>
+            <% if (user) { %>
+                <div class="user-menu">
+                    <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar">
+                    <span><%= user.username %></span>
+                    <a href="/logout">Выйти</a>
+                </div>
+            <% } else { %>
+                <a href="/auth/discord" class="login-btn">Войти через Discord</a>
+            <% } %>
         </nav>
     </header>
 
-    <div class="forum-container">
-        <h2>Форум</h2>
-        <p>Скоро здесь появится чат с авторизацией через Discord</p>
+    <div class="chat-container">
+        <h2>Форум <span id="online-badge" class="online-count">(загрузка...)</span></h2>
+        
+        <% if (user) { %>
+            <div class="category-buttons">
+                <button class="cat-btn active" data-cat="friends">👥 Друзья</button>
+                <button class="cat-btn" data-cat="cities">🏠 Города</button>
+                <button class="cat-btn" data-cat="news">📰 Новости</button>
+            </div>
+
+            <div id="messages" class="messages">
+                <!-- Сообщения загрузятся через JS -->
+            </div>
+
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
+                <button id="sendBtn">📤 Отправить</button>
+            </div>
+        <% } else { %>
+            <div class="login-message">
+                <p>🔐 Для участия в форуме войдите через Discord</p>
+                <a href="/auth/discord" class="login-btn" style="display: inline-block; margin-top: 15px;">Войти</a>
+            </div>
+        <% } %>
     </div>
+
+    <script>
+        const socket = io();
+        let currentCategory = 'friends';
+        let currentUser = <%= JSON.stringify(user) %>;
+
+        function deleteMessage(messageId) {
+            fetch(`/api/messages/${messageId}`, { method: 'DELETE' })
+                .then(() => {
+                    // Сообщаем серверу об удалении
+                    socket.emit('delete-message', { messageId, category: currentCategory });
+                })
+                .catch(err => console.error('Ошибка удаления:', err));
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('messages');
+            if (!container) return;
+            
+            if (messages.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">Сообщений пока нет. Будьте первым! 💬</div>';
+                return;
+            }
+            
+            container.innerHTML = messages.map(msg => {
+                const avatarUrl = msg.avatar 
+                    ? `https://cdn.discordapp.com/avatars/${msg.discord_id}/${msg.avatar}.png`
+                    : '/images/avatar.png';
+                const canDelete = (currentUser && (msg.discord_id === currentUser.id || 
+                    ['Helper','Moderator','Sr.Moderator','Curator','Team','Leadership'].includes(currentUser.role)));
+                
+                return `
+                    <div class="message" data-id="${msg.id}">
+                        <img src="${avatarUrl}" class="message-avatar" onerror="this.src='/images/avatar.png'">
+                        <div class="message-content">
+                            <div>
+                                <span class="message-username">${escapeHtml(msg.username)}</span>
+                                <span class="message-time">${new Date(msg.created_at).toLocaleString()}</span>
+                            </div>
+                            <div class="message-text">${escapeHtml(msg.message)}</div>
+                        </div>
+                        ${canDelete ? `<button class="delete-btn" onclick="deleteMessage(${msg.id})">🗑️</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function loadMessages() {
+            fetch(`/api/messages?category=${currentCategory}`)
+                .then(res => res.json())
+                .then(messages => renderMessages(messages))
+                .catch(err => console.error('Ошибка загрузки:', err));
+        }
+
+        // Отправка сообщения
+        document.getElementById('sendBtn')?.addEventListener('click', () => {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            fetch('/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category: currentCategory, message })
+            })
+            .then(() => {
+                input.value = '';
+                socket.emit('new-message', { category: currentCategory });
+            })
+            .catch(err => console.error('Ошибка отправки:', err));
+        });
+
+        document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('sendBtn').click();
+        });
+
+        // Переключение категорий
+        document.querySelectorAll('.cat-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentCategory = btn.dataset.cat;
+                loadMessages();
+                socket.emit('join-category', currentCategory);
+            });
+        });
+
+        // Socket.io события
+        socket.on('connect', () => {
+            socket.emit('join-category', currentCategory);
+        });
+
+        socket.on('new-message', (data) => {
+            if (data.category === currentCategory) {
+                loadMessages();
+            }
+        });
+
+        socket.on('message-deleted', (data) => {
+            if (data.category === currentCategory) {
+                loadMessages();
+            }
+        });
+
+        socket.on('online-count', (count) => {
+            const badge = document.getElementById('online-badge');
+            if (badge) badge.textContent = `(${count} онлайн)`;
+        });
+
+        // Первоначальная загрузка
+        loadMessages();
+        setInterval(() => socket.emit('ping'), 30000);
+    </script>
 </body>
 </html>

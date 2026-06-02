@@ -4,27 +4,19 @@
     <title>Форум — Glow Worlds</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="/images/crystal.png">
-    <script src="/socket.io/socket.io.js"></script>
     <style>
-        .chat-container { max-width: 800px; margin: 30px auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .chat-container { max-width: 800px; margin: 40px auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
         .category-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .cat-btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; background: #e0e0e0; font-weight: bold; transition: 0.3s; }
+        .cat-btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; background: #e0e0e0; font-weight: bold; }
         .cat-btn.active { background: #24af68; color: white; }
         .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin-bottom: 20px; background: #fafafa; }
-        .message { margin-bottom: 15px; padding: 10px; background: white; border-radius: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: flex-start; }
-        .message-avatar { width: 45px; height: 45px; border-radius: 50%; margin-right: 12px; }
-        .message-content { flex-grow: 1; }
-        .message-username { font-weight: bold; color: #24af68; }
-        .message-time { font-size: 11px; color: #999; margin-left: 10px; }
-        .message-text { margin-top: 5px; word-wrap: break-word; }
-        .delete-btn { background: none; border: none; color: #ff5555; cursor: pointer; font-size: 18px; padding: 5px; border-radius: 50%; width: 30px; }
-        .delete-btn:hover { background: #ffeeee; }
+        .message { margin-bottom: 15px; padding: 12px; background: white; border-radius: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .message strong { color: #24af68; }
+        .message small { color: #999; font-size: 11px; margin-left: 10px; }
         .input-area { display: flex; gap: 10px; }
         .input-area input { flex-grow: 1; padding: 12px; border: 1px solid #ccc; border-radius: 30px; font-size: 14px; }
         .input-area button { background: #24af68; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; }
-        .input-area button:hover { background: #447008; }
         .login-message { text-align: center; padding: 40px; background: #f9f9f9; border-radius: 20px; }
-        .online-count { font-size: 14px; color: #24af68; margin-left: 10px; }
     </style>
 </head>
 <body>
@@ -48,7 +40,7 @@
     </header>
 
     <div class="chat-container">
-        <h2>Форум <span id="online-badge" class="online-count">(загрузка...)</span></h2>
+        <h2>Форум</h2>
         
         <% if (user) { %>
             <div class="category-buttons">
@@ -58,11 +50,11 @@
             </div>
 
             <div id="messages" class="messages">
-                <!-- Сообщения загрузятся через JS -->
+                Загрузка...
             </div>
 
             <div class="input-area">
-                <input type="text" id="messageInput" placeholder="Введите сообщение..." autocomplete="off">
+                <input type="text" id="messageInput" placeholder="Введите сообщение...">
                 <button id="sendBtn">📤 Отправить</button>
             </div>
         <% } else { %>
@@ -74,76 +66,89 @@
     </div>
 
     <script>
-        // === ОТЛАДКА ===
-        console.log('🔍 Скрипт форума загружен');
-        console.log('🔍 Текущий пользователь:', <%= JSON.stringify(user) %>);
-        
         let currentCategory = 'friends';
         let currentUser = <%= JSON.stringify(user) %>;
+        
+        console.log('🔍 currentUser:', currentUser);
 
-        // Проверяем подключение socket.io
-        setTimeout(() => {
-            if (typeof io === 'undefined') {
-                console.error('❌ socket.io не загрузился! Проверь путь /socket.io/socket.io.js');
-            } else {
-                console.log('✅ socket.io загружен, инициализация...');
-                const socket = io();
-                console.log('✅ socket создан:', socket);
-                
-                socket.on('connect', () => console.log('🟢 Соединение с socket.io установлено'));
-                socket.on('disconnect', () => console.log('🔴 Соединение с socket.io разорвано'));
-                socket.on('new-message', (data) => console.log('📨 Событие new-message:', data));
-                socket.on('message-deleted', (data) => console.log('🗑️ Событие message-deleted:', data));
-            }
-        }, 500);
-
-        // Проверяем API
-        fetch('/api/messages?category=friends')
-            .then(res => res.json())
-            .then(data => console.log('✅ API /api/messages работает, сообщений:', data.length))
-            .catch(err => console.error('❌ Ошибка API /api/messages:', err));
-
-        function deleteMessage(messageId) {
-            console.log('🗑️ Удаляем сообщение:', messageId);
-            fetch(`/api/messages/${messageId}`, { method: 'DELETE' })
-                .then(() => {
-                    console.log('✅ Сообщение удалено');
-                    loadMessages();
-                })
-                .catch(err => console.error('❌ Ошибка удаления:', err));
-        }
-
-        function renderMessages(messages) {
+        async function loadMessages() {
             const container = document.getElementById('messages');
             if (!container) return;
             
-            if (messages.length === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">Сообщений пока нет. Будьте первым! 💬</div>';
-                return;
-            }
+            container.innerHTML = '⏳ Загрузка...';
             
-            container.innerHTML = messages.map(msg => {
-                const avatarUrl = msg.avatar 
-                    ? `https://cdn.discordapp.com/avatars/${msg.discord_id}/${msg.avatar}.png`
-                    : '/images/avatar.png';
-                const canDelete = (currentUser && (msg.discord_id === currentUser.id || 
-                    ['Helper','Moderator','Sr.Moderator','Curator','Team','Leadership'].includes(currentUser.role)));
+            try {
+                const response = await fetch(`/api/messages?category=${currentCategory}`);
+                if (!response.ok) throw new Error('Ошибка сервера: ' + response.status);
+                const messages = await response.json();
+                console.log('📩 Загружено сообщений:', messages.length);
                 
-                return `
-                    <div class="message" data-id="${msg.id}">
-                        <img src="${avatarUrl}" class="message-avatar" onerror="this.src='/images/avatar.png'">
-                        <div class="message-content">
-                            <div>
-                                <span class="message-username">${escapeHtml(msg.username)}</span>
-                                <span class="message-time">${new Date(msg.created_at).toLocaleString()}</span>
-                            </div>
-                            <div class="message-text">${escapeHtml(msg.message)}</div>
-                        </div>
-                        ${canDelete ? `<button class="delete-btn" onclick="deleteMessage(${msg.id})">🗑️</button>` : ''}
+                if (messages.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">Сообщений пока нет. Будьте первым! 💬</div>';
+                    return;
+                }
+                
+                container.innerHTML = messages.map(msg => `
+                    <div class="message">
+                        <strong>${escapeHtml(msg.username)}</strong>
+                        <small>${new Date(msg.created_at).toLocaleString()}</small><br>
+                        ${escapeHtml(msg.message)}
+                        ${msg.discord_id === currentUser?.id ? `<button onclick="deleteMessage(${msg.id})" style="margin-top:5px;">🗑️ Удалить</button>` : ''}
                     </div>
-                `;
-            }).join('');
-            container.scrollTop = container.scrollHeight;
+                `).join('');
+                container.scrollTop = container.scrollHeight;
+            } catch (error) {
+                console.error('❌ Ошибка загрузки:', error);
+                container.innerHTML = '<div style="color:red;padding:20px;">Ошибка загрузки сообщений. Проверьте консоль.</div>';
+            }
+        }
+
+        async function deleteMessage(id) {
+            if (!confirm('Удалить сообщение?')) return;
+            try {
+                const response = await fetch(`/api/messages/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadMessages();
+                } else {
+                    alert('Не удалось удалить');
+                }
+            } catch (error) {
+                console.error('❌ Ошибка удаления:', error);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Отправка...';
+            
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: currentCategory, message })
+                });
+                
+                const data = await response.json();
+                console.log('📨 Ответ сервера:', data);
+                
+                if (response.ok) {
+                    input.value = '';
+                    loadMessages();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('❌ Ошибка отправки:', error);
+                alert('Ошибка отправки. Смотри консоль.');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📤 Отправить';
+            }
         }
 
         function escapeHtml(text) {
@@ -152,46 +157,14 @@
             return div.innerHTML;
         }
 
-        function loadMessages() {
-            console.log('🔄 Загружаем сообщения для категории:', currentCategory);
-            fetch(`/api/messages?category=${currentCategory}`)
-                .then(res => res.json())
-                .then(messages => {
-                    console.log(`✅ Загружено ${messages.length} сообщений`);
-                    renderMessages(messages);
-                })
-                .catch(err => console.error('❌ Ошибка загрузки сообщений:', err));
-        }
-
-        // Отправка сообщения
-        document.getElementById('sendBtn')?.addEventListener('click', () => {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            if (!message) return;
-            
-            console.log('📤 Отправляем сообщение:', { category: currentCategory, message });
-            fetch('/api/messages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: currentCategory, message })
-            })
-            .then(res => res.json())
-            .then(data => {
-                console.log('✅ Ответ сервера:', data);
-                input.value = '';
-                loadMessages();
-            })
-            .catch(err => console.error('❌ Ошибка отправки:', err));
-        });
-
+        // Обработчики
+        document.getElementById('sendBtn')?.addEventListener('click', sendMessage);
         document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') document.getElementById('sendBtn').click();
+            if (e.key === 'Enter') sendMessage();
         });
 
-        // Переключение категорий
         document.querySelectorAll('.cat-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                console.log('🔄 Переключение категории на:', btn.dataset.cat);
                 document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentCategory = btn.dataset.cat;
@@ -199,12 +172,9 @@
             });
         });
 
-        // Первоначальная загрузка
+        // Загружаем сообщения при старте
         loadMessages();
-        setInterval(() => {
-            console.log('🔄 Автообновление сообщений');
-            loadMessages();
-        }, 5000);
+        setInterval(loadMessages, 5000);
     </script>
 </body>
 </html>

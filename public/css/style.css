@@ -13,18 +13,80 @@ header {
     align-items: center;
     gap: 20px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    flex-wrap: wrap;
 }
 
 .logo { height: 50px; }
-h1 { color: #24af68; flex-grow: 1; }
+
+h1 { 
+    color: #24af68; 
+    flex-grow: 1; 
+    font-size: 1.5rem;
+}
+
+nav {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
 
 nav a {
-    margin-left: 20px;
     text-decoration: none;
     color: #447008;
     font-weight: bold;
+    transition: 0.3s;
 }
+
 nav a:hover { color: #24af68; }
+
+/* Пользовательское меню */
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #f0f0f0;
+    padding: 5px 15px 5px 10px;
+    border-radius: 40px;
+}
+
+.user-menu .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #24af68;
+}
+
+.user-menu span {
+    color: #333;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.user-menu a {
+    color: #ff5555;
+    font-size: 13px;
+    background: none;
+    padding: 0;
+}
+
+.user-menu a:hover {
+    color: #ff0000;
+    background: none;
+}
+
+.login-btn {
+    background: #24af68;
+    color: white !important;
+    padding: 8px 18px;
+    border-radius: 30px;
+}
+
+.login-btn:hover {
+    background: #447008;
+    transform: scale(1.02);
+}
 
 .banner {
     width: 100%;
@@ -41,7 +103,9 @@ nav a:hover { color: #24af68; }
     max-width: 350px;
     box-shadow: 0 5px 20px rgba(0,0,0,0.1);
 }
+
 .server-card img { width: 80px; margin-bottom: 15px; }
+.server-card h2 { color: #24af68; margin-bottom: 10px; }
 .server-card button {
     background: #24af68;
     color: white;
@@ -50,6 +114,7 @@ nav a:hover { color: #24af68; }
     border-radius: 10px;
     cursor: pointer;
     margin-top: 15px;
+    font-size: 16px;
 }
 .server-card button:hover { background: #447008; }
 
@@ -61,6 +126,7 @@ nav a:hover { color: #24af68; }
     margin: 50px;
     flex-wrap: wrap;
 }
+
 .donate-card {
     background: white;
     border-radius: 20px;
@@ -70,6 +136,7 @@ nav a:hover { color: #24af68; }
     transition: 0.3s;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
+
 .donate-card img { width: 100px; margin-bottom: 15px; }
 .donate-card .price {
     display: block;
@@ -85,13 +152,18 @@ nav a:hover { color: #24af68; }
     border-radius: 8px;
     cursor: pointer;
 }
+
 .sponsor {
     transform: scale(1.1);
     z-index: 2;
     background: #fff8e7;
     border: 2px solid gold;
 }
+
 .forum-container {
-    text-align: center;
-    margin: 50px;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 20px;
 }

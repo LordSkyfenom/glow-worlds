@@ -3,30 +3,48 @@
 <head>
     <title>Админка — Glow Worlds</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .container { max-width: 1000px; margin: 40px auto; padding: 20px; background: white; border-radius: 20px; }
+        .order { border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 15px; background: #fafafa; }
+        button { margin: 5px; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
+        .confirm { background: #24af68; color: white; }
+        .decline { background: #ff5555; color: white; }
+        .status { font-weight: bold; }
+    </style>
 </head>
 <body>
-    <header><h1>Админ панель</h1></header>
+    <header>
+        <h1>👑 Админ панель</h1>
+        <nav><a href="/">Главная</a></nav>
+    </header>
     <div class="container">
-        <h2>Заказы</h2>
-        <div id="orders"></div>
+        <h2>📦 Заказы</h2>
+        <div id="orders">Загрузка...</div>
     </div>
     <script>
         async function loadOrders() {
             const res = await fetch('/api/admin/orders');
             const orders = await res.json();
             const container = document.getElementById('orders');
+            if (!orders.length) {
+                container.innerHTML = '<p>Заказов пока нет</p>';
+                return;
+            }
             container.innerHTML = orders.map(order => `
-                <div style="border:1px solid #ccc; padding:10px; margin:10px;">
+                <div class="order">
                     <strong>Заказ #${order.id}</strong><br>
-                    Discord: ${order.discord_name}<br>
-                    Minecraft ник: ${order.minecraft_nick}<br>
-                    Товар: ${order.product_type}<br>
-                    Сумма: ${order.price}₽<br>
-                    Статус: ${order.status}<br>
+                    👤 Discord: ${order.discord_name}<br>
+                    🎮 Minecraft ник: ${order.minecraft_nick}<br>
+                    📦 Товар: ${order.product_type}<br>
+                    💵 Сумма: ${order.price}₽<br>
+                    📅 Создан: ${new Date(order.created_at).toLocaleString()}<br>
+                    📊 Статус: <span class="status">${order.status}</span><br>
                     ${order.status === 'waiting_confirmation' ? `
-                        <button onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
-                        <button onclick="declineOrder(${order.id})">❌ Отклонить</button>
+                        <button class="confirm" onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
+                        <button class="decline" onclick="declineOrder(${order.id})">❌ Отклонить</button>
                     ` : ''}
+                    ${order.status === 'confirmed' ? '✅ Подтверждён' : ''}
+                    ${order.status === 'cancelled' ? '❌ Отклонён' : ''}
                 </div>
             `).join('');
         }

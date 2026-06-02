@@ -28,22 +28,37 @@
 
     <img src="/images/home.png" alt="Banner" class="banner">
 
-    <div class="server-card">
-        <img src="/images/sword.png" alt="Server Icon">
-        <h2>Glow Vanilla</h2>
-        <p>Java Edition 1.20+</p>
-        <div class="online">🟢 Онлайн: <span id="online-count">0</span> / 20</div>
-        <button onclick="copyIP()">📋 Копировать IP</button>
+    <div class="servers-container" style="display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin: 40px auto; max-width: 1200px;">
+        <% servers.forEach(server => { %>
+            <div class="server-card" style="background: white; border-radius: 20px; padding: 30px; text-align: center; width: 280px; box-shadow: 0 5px 20px rgba(0,0,0,0.1);">
+                <img src="<%= server.icon_url %>" alt="<%= server.name %>" style="width: 80px; margin-bottom: 15px;">
+                <h2 style="color: #24af68;"><%= server.name %></h2>
+                <p><%= server.version %></p>
+                <div class="online">🟢 Онлайн: <span class="online-count" data-server-id="<%= server.id %>">0</span> / 20</div>
+                <button onclick="copyIP('<%= server.ip %>')">📋 Копировать IP</button>
+            </div>
+        <% }); %>
     </div>
 
     <script>
-        function copyIP() {
-            navigator.clipboard.writeText('play.glow-worlds.ru');
-            alert('IP скопирован: play.glow-worlds.ru');
+        function copyIP(ip) {
+            navigator.clipboard.writeText(ip);
+            alert('IP скопирован: ' + ip);
         }
-        fetch('/api/online')
-            .then(res => res.json())
-            .then(data => document.getElementById('online-count').textContent = data.online);
+        
+        async function updateOnline() {
+            try {
+                const res = await fetch('/api/online');
+                const data = await res.json();
+                document.querySelectorAll('.online-count').forEach(el => {
+                    const serverId = el.dataset.serverId;
+                    el.textContent = data[serverId] || 0;
+                });
+            } catch(e) { console.error('Ошибка обновления онлайна'); }
+        }
+        
+        updateOnline();
+        setInterval(updateOnline, 30000);
     </script>
 </body>
 </html>

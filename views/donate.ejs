@@ -108,16 +108,20 @@
                 return;
             }
             
-            const res = await fetch('/create-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ product: selectedProduct, minecraft_nick: nick })
-            });
-            const data = await res.json();
-            if (data.redirectUrl) {
-                window.location.href = data.redirectUrl;
-            } else {
-                alert('Ошибка: ' + data.error);
+            try {
+                const res = await fetch('/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product: selectedProduct, minecraft_nick: nick })
+                });
+                const data = await res.json();
+                if (data.redirectUrl) {
+                    window.location.href = data.redirectUrl;
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (err) {
+                alert('Ошибка соединения с сервером');
             }
         });
 

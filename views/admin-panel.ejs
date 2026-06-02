@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Админ панель — Glow Worlds</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .admin-container { max-width: 1200px; margin: 40px auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
+        .tab { padding: 10px 20px; cursor: pointer; background: #f0f0f0; border-radius: 10px 10px 0 0; transition: 0.3s; }
+        .tab.active { background: #24af68; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card { border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin: 15px 0; background: #fafafa; }
+        button { margin: 5px; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        .confirm { background: #24af68; color: white; }
+        .decline { background: #ff5555; color: white; }
+        .edit { background: #ffaa00; color: white; }
+        .delete { background: #ff5555; color: white; }
+        .add-btn { background: #24af68; color: white; padding: 10px 20px; margin-bottom: 20px; border: none; border-radius: 8px; cursor: pointer; }
+        .form-container { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 20px; display: none; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+        .edit-form { background: #fff8e7; padding: 15px; border-radius: 15px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <header>
+        <img src="/images/icon.png" class="logo">
+        <h1>Glow Worlds — Админ панель</h1>
+        <nav>
+            <a href="/">Главная</a>
+            <a href="/donate">Донат</a>
+            <a href="/forum">Форум</a>
+            <a href="/profile">Профиль</a>
+            <div class="user-menu">
+                <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar">
+                <span><%= user.username %></span>
+                <a href="/logout">Выйти</a>
+            </div>
+        </nav>
+    </header>
+
+    <div class="admin-container">
+        <div class="tabs">
+            <div class="tab active" data-tab="orders">📦 Заказы</div>
+            <div class="tab" data-tab="donate">💰 Донат</div>
+            <div class="tab" data-tab="servers">🖥️ Сервера</div>
+        </div>
+
+        <!-- Вкладка 1: Заказы -->
+        <div id="orders" class="tab-content active">
+            <h2>Управление заказами</h2>
+            <div id="orders-list">Загрузка заказов...</div>
+        </div>
+
+        <!-- Вкладка 2: Донат товары -->
+        <div id="donate" class="tab-content">
+            <h2>Управление товарами доната</h2>
+            <button class="add-btn" onclick="showAddProductForm()">+ Добавить товар</button>
+            <div id="products-list">Загрузка товаров...</div>
+            <div id="add-product-form" class="form-container">
+                <h3>Новый товар</h3>
+                <div class="form-group"><label>Название</label><input type="text" id="newProductName" placeholder="Например: Проходка"></div>
+                <div class="form-group"><label>Цена (₽)</label><input type="number" id="newProductPrice" placeholder="150"></div>
+                <div class="form-group"><label>Описание</label><textarea id="newProductDesc" placeholder="Краткое описание"></textarea></div>
+                <div class="form-group"><label>URL картинки</label><input type="text" id="newProductImage" placeholder="/images/pickaxe.png"></div>
+                <button onclick="addProduct()">Сохранить</button>
+                <button onclick="cancelAddProductForm()">Отмена</button>
+            </div>
+        </div>
+
+        <!-- Вкладка 3: Сервера -->
+        <div id="servers" class="tab-content">
+            <h2>Управление серверами на главной</h2>
+            <button class="add-btn" onclick="showAddServerForm()">+ Добавить сервер</button>
+            <div id="servers-list">Загрузка серверов...</div>
+            <div id="add-server-form" class="form-container">
+                <h3>Новый сервер</h3>
+                <div class="form-group"><label>Название</label><input type="text" id="newServerName" placeholder="Glow Vanilla"></div>
+                <div class="form-group"><label>IP</label><input type="text" id="newServerIp" placeholder="play.glow-worlds.ru"></div>
+                <div class="form-group"><label>Версия</label><input type="text" id="newServerVersion" placeholder="Java Edition 1.20+"></div>
+                <div class="form-group"><label>URL иконки</label><input type="text" id="newServerIcon" placeholder="/images/sword.png"></div>
+                <button onclick="addServer()">Сохранить</button>
+                <button onclick="cancelAddServerForm()">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== ВКЛАДКИ =====
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+                if (tab.dataset.tab === 'donate') loadProducts();
+                if (tab.dataset.tab === 'servers') loadServers();
+            });
+        });
+
+        // ===== ЗАКАЗЫ =====
+        async function loadOrders() {
+            try {
+                const res = await fetch('/api/admin/orders');
+                const orders = await res.json();
+                const container = document.getElementById('orders-list');
+                if (!orders.length) { container.innerHTML = '<p>Нет заказов</p>'; return; }
+                container.innerHTML = orders.map(order => `
+                    <div class="card">
+                        <strong>Заказ #${order.id}</strong><br>
+                        👤 Discord: ${order.discord_name}<br>
+                        🎮 Minecraft ник: ${order.minecraft_nick}<br>
+                        📦 Товар: ${order.product_type}<br>
+                        💵 Сумма: ${order.price} ₽<br>
+                        📅 Создан: ${new Date(order.created_at).toLocaleString()}<br>
+                        📊 Статус: <strong>${order.status}</strong><br>
+                        ${order.status === 'waiting_confirmation' ? `
+                            <button class="confirm" onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
+                            <button class="decline" onclick="declineOrder(${order.id})">❌ Отклонить</button>
+                        ` : ''}
+                    </div>
+                `).join('');
+            } catch(e) { document.getElementById('orders-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; }
+        }
+
+        async function confirmOrder(id) {
+            await fetch('/api/admin/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: id }) });
+            loadOrders();
+        }
+        async function declineOrder(id) {
+            await fetch('/api/admin/decline-order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: id }) });
+            loadOrders();
+        }
+
+        // ===== ТОВАРЫ ДОНАТА =====
+        async function loadProducts() {
+            try {
+                const res = await fetch('/api/admin/products');
+                const products = await res.json();
+                const container = document.getElementById('products-list');
+                if (!products.length) { container.innerHTML = '<p>Нет товаров</p>'; return; }
+                container.innerHTML = products.map(p => `
+                    <div class="card" id="product-card-${p.id}">
+                        <strong>${escapeHtml(p.name)}</strong> — ${p.price}₽<br>
+                        ${escapeHtml(p.description)}<br>
+                        <img src="${p.image_url}" style="max-width:50px; margin-top:5px;"><br>
+                        <button class="edit" onclick="editProduct(${p.id})">✏️ Редактировать</button>
+                        <button class="delete" onclick="deleteProduct(${p.id})">🗑️ Удалить</button>
+                        <div id="edit-product-${p.id}" style="display:none;" class="edit-form">
+                            <h4>Редактировать товар</h4>
+                            <input type="text" id="edit-name-${p.id}" value="${escapeHtml(p.name)}" placeholder="Название">
+                            <input type="number" id="edit-price-${p.id}" value="${p.price}" placeholder="Цена">
+                            <textarea id="edit-desc-${p.id}" placeholder="Описание">${escapeHtml(p.description)}</textarea>
+                            <input type="text" id="edit-image-${p.id}" value="${p.image_url}" placeholder="URL картинки">
+                            <button onclick="saveProduct(${p.id})">Сохранить</button>
+                            <button onclick="cancelEditProduct(${p.id})">Отмена</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { document.getElementById('products-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; }
+        }
+
+        function showAddProductForm() { document.getElementById('add-product-form').style.display = 'block'; }
+        function cancelAddProductForm() { document.getElementById('add-product-form').style.display = 'none'; }
+        async function addProduct() {
+            const name = document.getElementById('newProductName').value;
+            const price = parseInt(document.getElementById('newProductPrice').value);
+            const description = document.getElementById('newProductDesc').value;
+            const image_url = document.getElementById('newProductImage').value;
+            if (!name || !price) { alert('Заполните название и цену'); return; }
+            await fetch('/api/admin/add-product', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, price, description, image_url })
+            });
+            cancelAddProductForm();
+            document.getElementById('newProductName').value = '';
+            document.getElementById('newProductPrice').value = '';
+            document.getElementById('newProductDesc').value = '';
+            document.getElementById('newProductImage').value = '';
+            loadProducts();
+        }
+        function editProduct(id) { document.getElementById(`edit-product-${id}`).style.display = 'block'; }
+        function cancelEditProduct(id) { document.getElementById(`edit-product-${id}`).style.display = 'none'; }
+        async function saveProduct(id) {
+            const name = document.getElementById(`edit-name-${id}`).value;
+            const price = parseInt(document.getElementById(`edit-price-${id}`).value);
+            const description = document.getElementById(`edit-desc-${id}`).value;
+            const image_url = document.getElementById(`edit-image-${id}`).value;
+            await fetch(`/api/admin/update-product/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, price, description, image_url })
+            });
+            loadProducts();
+        }
+        async function deleteProduct(id) {
+            if (!confirm('Удалить товар?')) return;
+            await fetch(`/api/admin/delete-product/${id}`, { method: 'DELETE' });
+            loadProducts();
+        }
+
+        // ===== СЕРВЕРА =====
+        async function loadServers() {
+            try {
+                const res = await fetch('/api/admin/servers');
+                const servers = await res.json();
+                const container = document.getElementById('servers-list');
+                if (!servers.length) { container.innerHTML = '<p>Нет серверов</p>'; return; }
+                container.innerHTML = servers.map(s => `
+                    <div class="card" id="server-card-${s.id}">
+                        <strong>${escapeHtml(s.name)}</strong> — ${s.ip}<br>
+                        Версия: ${s.version}<br>
+                        Активен: ${s.active ? '✅' : '❌'}<br>
+                        <img src="${s.icon_url}" style="max-width:40px;"><br>
+                        <button class="edit" onclick="editServer(${s.id})">✏️ Редактировать</button>
+                        <button class="delete" onclick="deleteServer(${s.id})">🗑️ Удалить</button>
+                        <div id="edit-server-${s.id}" style="display:none;" class="edit-form">
+                            <h4>Редактировать сервер</h4>
+                            <input type="text" id="edit-name-s-${s.id}" value="${escapeHtml(s.name)}" placeholder="Название">
+                            <input type="text" id="edit-ip-${s.id}" value="${s.ip}" placeholder="IP">
+                            <input type="text" id="edit-version-${s.id}" value="${s.version}" placeholder="Версия">
+                            <input type="text" id="edit-icon-${s.id}" value="${s.icon_url}" placeholder="URL иконки">
+                            <label><input type="checkbox" id="edit-active-${s.id}" ${s.active ? 'checked' : ''}> Активен</label>
+                            <button onclick="saveServer(${s.id})">Сохранить</button>
+                            <button onclick="cancelEditServer(${s.id})">Отмена</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { document.getElementById('servers-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>'; }
+        }
+
+        function showAddServerForm() { document.getElementById('add-server-form').style.display = 'block'; }
+        function cancelAddServerForm() { document.getElementById('add-server-form').style.display = 'none'; }
+        async function addServer() {
+            const name = document.getElementById('newServerName').value;
+            const ip = document.getElementById('newServerIp').value;
+            const version = document.getElementById('newServerVersion').value;
+            const icon_url = document.getElementById('newServerIcon').value;
+            if (!name || !ip) { alert('Заполните название и IP'); return; }
+            await fetch('/api/admin/add-server', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, ip, version, icon_url })
+            });
+            cancelAddServerForm();
+            document.getElementById('newServerName').value = '';
+            document.getElementById('newServerIp').value = '';
+            document.getElementById('newServerVersion').value = 'Java Edition 1.20+';
+            document.getElementById('newServerIcon').value = '';
+            loadServers();
+        }
+        function editServer(id) { document.getElementById(`edit-server-${id}`).style.display = 'block'; }
+        function cancelEditServer(id) { document.getElementById(`edit-server-${id}`).style.display = 'none'; }
+        async function saveServer(id) {
+            const name = document.getElementById(`edit-name-s-${id}`).value;
+            const ip = document.getElementById(`edit-ip-${id}`).value;
+            const version = document.getElementById(`edit-version-${id}`).value;
+            const icon_url = document.getElementById(`edit-icon-${id}`).value;
+            const active = document.getElementById(`edit-active-${id}`).checked;
+            await fetch(`/api/admin/update-server/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, ip, version, icon_url, active })
+            });
+            loadServers();
+        }
+        async function deleteServer(id) {
+            if (!confirm('Удалить сервер?')) return;
+            await fetch(`/api/admin/delete-server/${id}`, { method: 'DELETE' });
+            loadServers();
+        }
+
+        function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
+
+        // Загрузка при открытии
+        loadOrders();
+        loadProducts();
+        loadServers();
+        setInterval(loadOrders, 10000);
+    </script>
+</body>
+</html>

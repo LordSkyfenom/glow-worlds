@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Админка — Glow Worlds</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header><h1>Админ панель</h1></header>
+    <div class="container">
+        <h2>Заказы</h2>
+        <div id="orders"></div>
+    </div>
+    <script>
+        async function loadOrders() {
+            const res = await fetch('/api/admin/orders');
+            const orders = await res.json();
+            const container = document.getElementById('orders');
+            container.innerHTML = orders.map(order => `
+                <div style="border:1px solid #ccc; padding:10px; margin:10px;">
+                    <strong>Заказ #${order.id}</strong><br>
+                    Discord: ${order.discord_name}<br>
+                    Minecraft ник: ${order.minecraft_nick}<br>
+                    Товар: ${order.product_type}<br>
+                    Сумма: ${order.price}₽<br>
+                    Статус: ${order.status}<br>
+                    ${order.status === 'waiting_confirmation' ? `
+                        <button onclick="confirmOrder(${order.id})">✅ Подтвердить</button>
+                        <button onclick="declineOrder(${order.id})">❌ Отклонить</button>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+        
+        async function confirmOrder(id) {
+            await fetch('/api/admin/confirm-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: id })
+            });
+            loadOrders();
+        }
+        
+        async function declineOrder(id) {
+            await fetch('/api/admin/decline-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: id })
+            });
+            loadOrders();
+        }
+        
+        loadOrders();
+        setInterval(loadOrders, 5000);
+    </script>
+</body>
+</html>

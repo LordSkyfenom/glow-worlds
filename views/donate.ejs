@@ -1,133 +1,69 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Донат — Glow Worlds</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="icon" href="/images/crystal.png">
-    <style>
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 20px;
-            text-align: center;
-            min-width: 300px;
-        }
-        .modal-content input {
-            width: 100%;
-            padding: 10px;
-            margin: 15px 0;
-            border-radius: 10px;
-            border: 1px solid #ccc;
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <img src="/images/icon.png" class="logo">
-        <h1>Glow Worlds</h1>
-        <nav>
-            <a href="/">Главная</a>
-            <a href="/donate">Донат</a>
-            <a href="/forum">Форум</a>
-            <% if (user) { %>
-                <div class="user-menu">
-                    <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png" class="avatar">
-                    <span><%= user.username %></span>
-                    <a href="/logout">Выйти</a>
-                </div>
-            <% } else { %>
-                <a href="/auth/discord" class="login-btn">Войти через Discord</a>
-            <% } %>
-        </nav>
-    </header>
+<script>
+    let currentOrderId = null;
+    let currentPrice = 0;
 
-    <div class="donate-container">
-        <div class="donate-card" data-product="pickaxe">
-            <img src="/images/pickaxe.png" alt="Проходка">
-            <h3>Проходка</h3>
-            <p>Доступ на сервер</p>
-            <span class="price">150 ₽</span>
-            <button class="buy-btn">Купить</button>
-        </div>
-
-        <div class="donate-card sponsor" data-product="crown">
-            <img src="/images/crown.png" alt="Спонсор">
-            <h3>Спонсор</h3>
-            <p>Особая роль и привилегии</p>
-            <span class="price">250 ₽</span>
-            <button class="buy-btn">Купить</button>
-        </div>
-
-        <div class="donate-card" data-product="key">
-            <img src="/images/key.png" alt="Разбан">
-            <h3>Разбан</h3>
-            <p>Снятие блокировки</p>
-            <span class="price">150 ₽</span>
-            <button class="buy-btn">Купить</button>
-        </div>
-    </div>
-
-    <div id="nickModal" class="modal">
-        <div class="modal-content">
-            <h3>Введите Minecraft ник</h3>
-            <input type="text" id="minecraftNick" placeholder="Ваш ник">
-            <button id="submitOrder">Подтвердить</button>
-            <button onclick="closeModal()">Отмена</button>
-        </div>
-    </div>
-
-    <script>
-        let selectedProduct = null;
-
-        document.querySelectorAll('.buy-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                if (!<%= !!user %>) {
-                    alert('Сначала войдите через Discord');
-                    window.location.href = '/auth/discord';
-                    return;
-                }
-                selectedProduct = btn.closest('.donate-card').dataset.product;
-                document.getElementById('nickModal').style.display = 'flex';
-            });
+    async function createOrder(product, nick) {
+        const res = await fetch('/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product, minecraft_nick: nick })
         });
+        const data = await res.json();
+        if (data.orderId) {
+            currentOrderId = data.orderId;
+            currentPrice = data.price;
+            // Открываем ЮMoney в новой вкладке
+            window.open(data.paymentUrl, '_blank');
+            // Показываем модальное окно с кнопкой "Я оплатил"
+            showPaymentModal();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    }
 
-        document.getElementById('submitOrder').addEventListener('click', async () => {
-            const nick = document.getElementById('minecraftNick').value.trim();
-            if (!nick) {
-                alert('Введите Minecraft ник');
+    function showPaymentModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h3>💳 Оплата через ЮMoney</h3>
+                <p>Сумма: <strong>${currentPrice} ₽</strong></p>
+                <p>Если вы оплатили, нажмите кнопку ниже</p>
+                <button id="confirmPaymentBtn">✅ Я оплатил</button>
+                <button onclick="this.closest('.modal').remove()">❌ Отмена</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        modal.style.display = 'flex';
+        
+        document.getElementById('confirmPaymentBtn').addEventListener('click', async () => {
+            const res = await fetch('/api/mark-as-paid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: currentOrderId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('✅ Спасибо! Администратор проверит оплату.');
+                modal.remove();
+                location.reload();
+            } else {
+                alert('❌ Ошибка: ' + data.error);
+            }
+        });
+    }
+
+    // Вызов при нажатии "Купить"
+    document.querySelectorAll('.buy-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!<%= !!user %>) {
+                alert('Сначала войдите через Discord');
                 return;
             }
-            
-            try {
-                const res = await fetch('/create-order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product: selectedProduct, minecraft_nick: nick })
-                });
-                const data = await res.json();
-                if (data.redirectUrl) {
-                    window.location.href = data.redirectUrl;
-                } else {
-                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
-                }
-            } catch (err) {
-                alert('Ошибка соединения с сервером');
-            }
+            const product = btn.closest('.donate-card').dataset.product;
+            const nick = prompt('Введите Minecraft ник');
+            if (!nick) return;
+            await createOrder(product, nick);
         });
-
-        function closeModal() {
-            document.getElementById('nickModal').style.display = 'none';
-        }
-    </script>
-</body>
-</html>
+    });
+</script>

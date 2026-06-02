@@ -16,11 +16,11 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === Discord бот для уведомлений ===
+// === Discord бот (тот же, для уведомлений и ролей) ===
 const discordBot = new Client({ intents: [] });
 
 discordBot.once('ready', () => {
-  console.log('🤖 Discord бот для уведомлений запущен');
+  console.log('🤖 Discord бот запущен');
 });
 
 discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
@@ -190,6 +190,31 @@ app.post('/api/mark-as-paid', async (req, res) => {
   }
 });
 
+// === Отмена заказа пользователем ===
+app.post('/api/cancel-order', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  
+  const { orderId } = req.body;
+  
+  try {
+    const order = await pool.query('SELECT * FROM orders WHERE id = $1 AND discord_id = $2', [orderId, req.user.id]);
+    if (order.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    const status = order.rows[0].status;
+    if (status !== 'pending' && status !== 'waiting_confirmation') {
+      return res.status(400).json({ error: 'Cannot cancel order in current status' });
+    }
+    
+    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // === АДМИНКА API ===
 app.get('/api/admin/orders', async (req, res) => {
   if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
@@ -204,8 +229,30 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { orderId } = req.body;
-  await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
-  res.json({ success: true });
+  
+  try {
+    await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
+    
+    const order = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
+    if (order.rows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_ROLE_SPONSOR) {
+      try {
+        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+        const member = await guild.members.fetch(order.rows[0].discord_id);
+        
+        await member.roles.add(process.env.DISCORD_ROLE_SPONSOR);
+        console.log(`✅ Роль спонсора выдана ${member.user.username}`);
+        
+        await member.send(`🎉 Ваш заказ #${orderId} подтверждён! Роль спонсора выдана. Спасибо за поддержку сервера Glow Worlds!`);
+      } catch (err) {
+        console.error('❌ Ошибка выдачи роли:', err.message);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/admin/decline-order', async (req, res) => {

@@ -91,12 +91,17 @@ app.get('/profile', async (req, res) => {
   
   const isAdmin = (req.user.id === process.env.ADMIN_DISCORD_ID);
   
-  if (isAdmin) {
-    const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    return res.render('profile', { user: req.user, isAdmin: true, orders: orders.rows });
-  } else {
-    const orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
-    return res.render('profile', { user: req.user, isAdmin: false, orders: orders.rows });
+  try {
+    let orders;
+    if (isAdmin) {
+      orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    } else {
+      orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
+    }
+    return res.render('profile', { user: req.user, isAdmin: isAdmin, orders: orders.rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send('Ошибка базы данных: ' + err.message);
   }
 });
 
@@ -186,6 +191,14 @@ app.post('/api/mark-as-paid', async (req, res) => {
 });
 
 // === АДМИНКА API ===
+app.get('/api/admin/orders', async (req, res) => {
+  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+  res.json(orders.rows);
+});
+
 app.post('/api/admin/confirm-order', async (req, res) => {
   if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
     return res.status(403).json({ error: 'Forbidden' });

@@ -48,6 +48,9 @@ passport.use(new DiscordStrategy({
     const isOwner = (profile.id === process.env.DISCORD_ADMIN_ID);
     const role = isOwner ? 'Руководство' : 'Player';
     
+    console.log(`🔐 Авторизация: ${profile.username} (${profile.id})`);
+    console.log(`   isOwner: ${isOwner}, роль: ${role}`);
+    
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     
     if (result.rows.length === 0) {
@@ -55,14 +58,14 @@ passport.use(new DiscordStrategy({
         'INSERT INTO users (discord_id, username, avatar, role, is_owner) VALUES ($1, $2, $3, $4, $5)',
         [profile.id, profile.username, profile.avatar, role, isOwner]
       );
+      console.log(`   ✅ Новый пользователь создан в БД`);
     } else {
       await pool.query(
         'UPDATE users SET username = $1, avatar = $2, role = $3, is_owner = $4 WHERE discord_id = $5',
         [profile.username, profile.avatar, role, isOwner, profile.id]
       );
+      console.log(`   ✅ Пользователь обновлён в БД`);
     }
-    
-    console.log(`👤 ${profile.username} — роль: ${role} | владелец: ${isOwner}`);
     
     return done(null, {
       id: profile.id,
@@ -82,18 +85,28 @@ app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
-// === Профиль (админка для владельца) ===
+// === Профиль (с отладкой) ===
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
+  console.log('=== ПРОФИЛЬ ===');
+  console.log('req.user:', req.user);
+  console.log('isOwner из req.user:', req.user.isOwner);
+  
   const isOwner = req.user.isOwner === true;
+  
+  // Дополнительная проверка по БД
+  const dbUser = await pool.query('SELECT is_owner, role FROM users WHERE discord_id = $1', [req.user.id]);
+  console.log('БД: is_owner =', dbUser.rows[0]?.is_owner, 'role =', dbUser.rows[0]?.role);
   
   try {
     let orders;
     if (isOwner) {
       orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+      console.log(`👑 Админ: показано ${orders.rows.length} заказов`);
     } else {
       orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
+      console.log(`👤 Обычный пользователь: показано ${orders.rows.length} заказов`);
     }
     return res.render('profile', { user: req.user, isOwner: isOwner, orders: orders.rows });
   } catch (err) {

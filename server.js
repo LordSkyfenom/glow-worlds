@@ -79,11 +79,14 @@ app.get('/', async (req, res) => {
   const servers = await pool.query('SELECT * FROM servers WHERE active = true ORDER BY id');
   res.render('index', { user: req.user, servers: servers.rows });
 });
+
 app.get('/donate', async (req, res) => {
   const products = await pool.query('SELECT * FROM donate_products ORDER BY id');
   res.render('donate', { user: req.user, products: products.rows });
 });
+
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
+
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   const orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
@@ -144,11 +147,13 @@ app.get('/api/admin/orders', async (req, res) => {
   const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
   res.json(orders.rows);
 });
+
 app.post('/api/admin/confirm-order', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', req.body.orderId]);
   res.json({ success: true });
 });
+
 app.post('/api/admin/decline-order', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', req.body.orderId]);
@@ -161,18 +166,21 @@ app.get('/api/admin/products', async (req, res) => {
   const products = await pool.query('SELECT * FROM donate_products ORDER BY id');
   res.json(products.rows);
 });
+
 app.post('/api/admin/add-product', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, price, description, image_url } = req.body;
   await pool.query('INSERT INTO donate_products (name, price, description, image_url) VALUES ($1, $2, $3, $4)', [name, price, description, image_url]);
   res.json({ success: true });
 });
+
 app.put('/api/admin/update-product/:id', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, price, description, image_url } = req.body;
   await pool.query('UPDATE donate_products SET name = $1, price = $2, description = $3, image_url = $4 WHERE id = $5', [name, price, description, image_url, req.params.id]);
   res.json({ success: true });
 });
+
 app.delete('/api/admin/delete-product/:id', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   await pool.query('DELETE FROM donate_products WHERE id = $1', [req.params.id]);
@@ -185,18 +193,21 @@ app.get('/api/admin/servers', async (req, res) => {
   const servers = await pool.query('SELECT * FROM servers ORDER BY id');
   res.json(servers.rows);
 });
+
 app.post('/api/admin/add-server', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, ip, version, icon_url } = req.body;
   await pool.query('INSERT INTO servers (name, ip, version, icon_url, active) VALUES ($1, $2, $3, $4, true)', [name, ip, version, icon_url]);
   res.json({ success: true });
 });
+
 app.put('/api/admin/update-server/:id', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { name, ip, version, icon_url, active } = req.body;
   await pool.query('UPDATE servers SET name = $1, ip = $2, version = $3, icon_url = $4, active = $5 WHERE id = $6', [name, ip, version, icon_url, active, req.params.id]);
   res.json({ success: true });
 });
+
 app.delete('/api/admin/delete-server/:id', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   await pool.query('DELETE FROM servers WHERE id = $1', [req.params.id]);
@@ -218,6 +229,7 @@ app.get('/api/messages', async (req, res) => {
   `, [category]);
   res.json(result.rows);
 });
+
 app.post('/api/messages', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const { category, message } = req.body;
@@ -226,6 +238,7 @@ app.post('/api/messages', async (req, res) => {
   await pool.query('INSERT INTO forum_messages (user_id, category, message) VALUES ($1, $2, $3)', [userResult.rows[0].id, category, message]);
   res.json({ success: true });
 });
+
 app.delete('/api/messages/:id', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const messageResult = await pool.query('SELECT * FROM forum_messages WHERE id = $1', [req.params.id]);

@@ -59,33 +59,43 @@ passport.use(new DiscordStrategy({
     let highestRoleName = 'Player';
     let highestRolePosition = -1;
     let isOwner = false;
+    let allRoles = [];
     
     if (discordBot && process.env.DISCORD_GUILD_ID) {
       try {
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
         const member = await guild.members.fetch(profile.id);
         
-        const sortedRoles = member.roles.cache.sort((a, b) => b.position - a.position);
+        // Получаем все роли, сортируем по позиции
+        const sortedRoles = member.roles.cache
+          .filter(role => role.name !== '@everyone')
+          .sort((a, b) => b.position - a.position);
         
-        for (const [roleId, role] of sortedRoles) {
-          if (role.name === '@everyone') continue;
-          
-          if (highestRolePosition === -1) {
-            highestRoleName = role.name;
-            highestRolePosition = role.position;
-          }
-          
-          if (roleId === process.env.DISCORD_OWNER_ROLE_ID) {
-            isOwner = true;
-          }
+        allRoles = sortedRoles.map(r => ({ id: r.id, name: r.name, position: r.position }));
+        
+        // Самая высшая роль — первая в отсортированном списке
+        const highestRole = sortedRoles.first();
+        if (highestRole) {
+          highestRoleName = highestRole.name;
+          highestRolePosition = highestRole.position;
         }
         
-        console.log(`👤 ${profile.username} — высшая роль: ${highestRoleName} (позиция ${highestRolePosition}) | isOwner: ${isOwner}`);
+        // Проверяем, есть ли у пользователя роль владельца
+        isOwner = sortedRoles.some(role => role.id === process.env.DISCORD_OWNER_ROLE_ID);
+        
+        console.log(`👤 ${profile.username}`);
+        console.log(`   📋 Все роли: ${allRoles.map(r => `${r.name}(${r.position})`).join(', ')}`);
+        console.log(`   ⭐ Высшая роль: ${highestRoleName} (позиция ${highestRolePosition})`);
+        console.log(`   👑 Владелец: ${isOwner}`);
+        
       } catch (err) {
         console.error('❌ Ошибка получения ролей:', err.message);
       }
+    } else {
+      console.log(`⚠️ Бот или GUILD_ID не настроены для пользователя ${profile.username}`);
     }
     
+    // Сохраняем или обновляем пользователя в БД
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     
     if (result.rows.length === 0) {

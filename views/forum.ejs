@@ -74,17 +74,43 @@
     </div>
 
     <script>
-        const socket = io();
+        // === ОТЛАДКА ===
+        console.log('🔍 Скрипт форума загружен');
+        console.log('🔍 Текущий пользователь:', <%= JSON.stringify(user) %>);
+        
         let currentCategory = 'friends';
         let currentUser = <%= JSON.stringify(user) %>;
 
+        // Проверяем подключение socket.io
+        setTimeout(() => {
+            if (typeof io === 'undefined') {
+                console.error('❌ socket.io не загрузился! Проверь путь /socket.io/socket.io.js');
+            } else {
+                console.log('✅ socket.io загружен, инициализация...');
+                const socket = io();
+                console.log('✅ socket создан:', socket);
+                
+                socket.on('connect', () => console.log('🟢 Соединение с socket.io установлено'));
+                socket.on('disconnect', () => console.log('🔴 Соединение с socket.io разорвано'));
+                socket.on('new-message', (data) => console.log('📨 Событие new-message:', data));
+                socket.on('message-deleted', (data) => console.log('🗑️ Событие message-deleted:', data));
+            }
+        }, 500);
+
+        // Проверяем API
+        fetch('/api/messages?category=friends')
+            .then(res => res.json())
+            .then(data => console.log('✅ API /api/messages работает, сообщений:', data.length))
+            .catch(err => console.error('❌ Ошибка API /api/messages:', err));
+
         function deleteMessage(messageId) {
+            console.log('🗑️ Удаляем сообщение:', messageId);
             fetch(`/api/messages/${messageId}`, { method: 'DELETE' })
                 .then(() => {
-                    // Сообщаем серверу об удалении
-                    socket.emit('delete-message', { messageId, category: currentCategory });
+                    console.log('✅ Сообщение удалено');
+                    loadMessages();
                 })
-                .catch(err => console.error('Ошибка удаления:', err));
+                .catch(err => console.error('❌ Ошибка удаления:', err));
         }
 
         function renderMessages(messages) {
@@ -127,10 +153,14 @@
         }
 
         function loadMessages() {
+            console.log('🔄 Загружаем сообщения для категории:', currentCategory);
             fetch(`/api/messages?category=${currentCategory}`)
                 .then(res => res.json())
-                .then(messages => renderMessages(messages))
-                .catch(err => console.error('Ошибка загрузки:', err));
+                .then(messages => {
+                    console.log(`✅ Загружено ${messages.length} сообщений`);
+                    renderMessages(messages);
+                })
+                .catch(err => console.error('❌ Ошибка загрузки сообщений:', err));
         }
 
         // Отправка сообщения
@@ -139,16 +169,19 @@
             const message = input.value.trim();
             if (!message) return;
             
+            console.log('📤 Отправляем сообщение:', { category: currentCategory, message });
             fetch('/api/messages', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ category: currentCategory, message })
             })
-            .then(() => {
+            .then(res => res.json())
+            .then(data => {
+                console.log('✅ Ответ сервера:', data);
                 input.value = '';
-                socket.emit('new-message', { category: currentCategory });
+                loadMessages();
             })
-            .catch(err => console.error('Ошибка отправки:', err));
+            .catch(err => console.error('❌ Ошибка отправки:', err));
         });
 
         document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
@@ -158,39 +191,20 @@
         // Переключение категорий
         document.querySelectorAll('.cat-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                console.log('🔄 Переключение категории на:', btn.dataset.cat);
                 document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentCategory = btn.dataset.cat;
                 loadMessages();
-                socket.emit('join-category', currentCategory);
             });
-        });
-
-        // Socket.io события
-        socket.on('connect', () => {
-            socket.emit('join-category', currentCategory);
-        });
-
-        socket.on('new-message', (data) => {
-            if (data.category === currentCategory) {
-                loadMessages();
-            }
-        });
-
-        socket.on('message-deleted', (data) => {
-            if (data.category === currentCategory) {
-                loadMessages();
-            }
-        });
-
-        socket.on('online-count', (count) => {
-            const badge = document.getElementById('online-badge');
-            if (badge) badge.textContent = `(${count} онлайн)`;
         });
 
         // Первоначальная загрузка
         loadMessages();
-        setInterval(() => socket.emit('ping'), 30000);
+        setInterval(() => {
+            console.log('🔄 Автообновление сообщений');
+            loadMessages();
+        }, 5000);
     </script>
 </body>
 </html>

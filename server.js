@@ -179,5 +179,4 @@ app.get('/api/online', (req, res) => {
 // === Запуск сервера ===
 app.listen(port, () => {
   console.log(`✅ Сервер Glow Worlds запущен на порту ${port}`);
-  console.log(`🌐 Сайт доступен: http://localhost:${port}`);
 });

@@ -5,17 +5,19 @@
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="/images/crystal.png">
     <style>
-        .forum-box { max-width: 800px; margin: 30px auto; background: white; border-radius: 20px; padding: 20px; }
-        .category-bar { display: flex; gap: 10px; margin-bottom: 20px; }
-        .cat-btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; background: #e0e0e0; font-weight: bold; }
+        .forum-box { max-width: 800px; margin: 30px auto; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .category-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .cat-btn { padding: 8px 20px; border: none; border-radius: 30px; cursor: pointer; background: #e0e0e0; font-weight: bold; transition: 0.3s; }
         .cat-btn.active { background: #24af68; color: white; }
         .messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 15px; padding: 15px; margin-bottom: 20px; background: #fafafa; }
-        .msg { margin-bottom: 15px; padding: 10px; background: white; border-radius: 10px; }
+        .msg { margin-bottom: 15px; padding: 12px; background: white; border-radius: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .msg strong { color: #24af68; }
-        .msg small { color: #999; font-size: 11px; }
+        .msg small { color: #999; font-size: 11px; margin-left: 10px; }
         .input-area { display: flex; gap: 10px; }
-        .input-area input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 30px; }
-        .input-area button { background: #24af68; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; }
+        .input-area input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 30px; font-size: 14px; }
+        .input-area button { background: #24af68; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        .delete-btn { background: none; border: none; color: #ff5555; cursor: pointer; margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+        .delete-btn img { width: 16px; height: 16px; pointer-events: none; }
         .login-message { text-align: center; padding: 40px; background: #f9f9f9; border-radius: 20px; }
     </style>
 </head>
@@ -34,7 +36,7 @@
                     <a href="/logout">Выйти</a>
                 </div>
             <% } else { %>
-                <a href="/auth/discord">Войти через Discord</a>
+                <a href="/auth/discord" class="login-btn">Войти через Discord</a>
             <% } %>
         </nav>
     </header>
@@ -60,7 +62,7 @@
         <% } else { %>
             <div class="login-message">
                 <p>🔐 Войдите через Discord, чтобы участвовать в форуме.</p>
-                <a href="/auth/discord">Войти</a>
+                <a href="/auth/discord" class="login-btn">Войти</a>
             </div>
         <% } %>
     </div>
@@ -79,7 +81,7 @@
                 if (!Array.isArray(data)) throw new Error('Не массив');
                 
                 if (data.length === 0) {
-                    container.innerHTML = '<div style="text-align:center;color:#999;">Нет сообщений. Напишите первым!</div>';
+                    container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">Нет сообщений. Напишите первым! 💬</div>';
                     return;
                 }
                 
@@ -87,20 +89,24 @@
                     <div class="msg">
                         <strong>${escapeHtml(m.username)}</strong> <small>${new Date(m.created_at).toLocaleString()}</small><br>
                         ${escapeHtml(m.message)}
-                        ${user && m.discord_id === user.id ? `<br><button onclick="del(${m.id})">🗑️ Удалить</button>` : ''}
+                        ${user && m.discord_id === user.id ? `<br><button class="delete-btn" onclick="del(${m.id})"><img src="/images/delete.png" alt="delete"> Удалить</button>` : ''}
                     </div>
                 `).join('');
                 container.scrollTop = container.scrollHeight;
             } catch(e) {
                 console.error(e);
-                container.innerHTML = '<div style="color:red;">Ошибка загрузки</div>';
+                container.innerHTML = '<div style="color:red;padding:20px;">Ошибка загрузки сообщений</div>';
             }
         }
 
         async function del(id) {
-            if (!confirm('Удалить?')) return;
-            await fetch(`/api/messages/${id}`, { method: 'DELETE' });
-            load();
+            if (!confirm('Удалить сообщение?')) return;
+            try {
+                await fetch(`/api/messages/${id}`, { method: 'DELETE' });
+                load();
+            } catch(e) {
+                alert('Ошибка удаления');
+            }
         }
 
         async function send() {
@@ -124,6 +130,7 @@
         }
 
         function escapeHtml(str) {
+            if (!str) return '';
             return str.replace(/[&<>]/g, function(m) {
                 if (m === '&') return '&amp;';
                 if (m === '<') return '&lt;';

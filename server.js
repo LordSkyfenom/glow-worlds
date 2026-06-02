@@ -16,7 +16,7 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === Discord бот (тот же, для уведомлений и ролей) ===
+// === Discord бот ===
 const discordBot = new Client({ intents: [] });
 
 discordBot.once('ready', () => {
@@ -53,26 +53,42 @@ passport.use(new DiscordStrategy({
   clientID: process.env.DISCORD_CLIENT_ID,
   clientSecret: process.env.DISCORD_CLIENT_SECRET,
   callbackURL: process.env.DISCORD_CALLBACK_URL,
-  scope: ['identify']
+  scope: ['identify', 'guilds', 'guilds.members.read']
 }, async (accessToken, refreshToken, profile, done) => {
   try {
+    // Получаем роли пользователя на сервере
+    let isOwner = false;
+    if (discordBot && process.env.DISCORD_GUILD_ID && process.env.DISCORD_OWNER_ROLE_ID) {
+      try {
+        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+        const member = await guild.members.fetch(profile.id);
+        const userRoles = member.roles.cache.map(role => role.id);
+        isOwner = userRoles.includes(process.env.DISCORD_OWNER_ROLE_ID);
+        console.log(`👤 ${profile.username} — роли: ${userRoles.join(', ')} | isOwner: ${isOwner}`);
+      } catch (err) {
+        console.error('❌ Ошибка получения ролей:', err.message);
+      }
+    }
+    
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     let role = 'Player';
     
     if (result.rows.length === 0) {
       await pool.query(
-        'INSERT INTO users (discord_id, username, avatar, role) VALUES ($1, $2, $3, $4)',
-        [profile.id, profile.username, profile.avatar, role]
+        'INSERT INTO users (discord_id, username, avatar, role, is_owner) VALUES ($1, $2, $3, $4, $5)',
+        [profile.id, profile.username, profile.avatar, role, isOwner]
       );
     } else {
       role = result.rows[0].role;
+      await pool.query('UPDATE users SET is_owner = $1 WHERE discord_id = $2', [isOwner, profile.id]);
     }
     
     return done(null, {
       id: profile.id,
       username: profile.username,
       avatar: profile.avatar,
-      role: role
+      role: role,
+      isOwner: isOwner
     });
   } catch (err) {
     console.error('❌ Discord auth error:', err);
@@ -85,20 +101,20 @@ app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
-// === Профиль (и админка внутри) ===
+// === Профиль (админка для владельца по роли) ===
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
-  const isAdmin = (req.user.id === process.env.ADMIN_DISCORD_ID);
+  const isOwner = req.user.isOwner === true;
   
   try {
     let orders;
-    if (isAdmin) {
+    if (isOwner) {
       orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
     } else {
       orders = await pool.query('SELECT * FROM orders WHERE discord_id = $1 ORDER BY created_at DESC', [req.user.id]);
     }
-    return res.render('profile', { user: req.user, isAdmin: isAdmin, orders: orders.rows });
+    return res.render('profile', { user: req.user, isOwner: isOwner, orders: orders.rows });
   } catch (err) {
     console.error(err);
     return res.status(500).send('Ошибка базы данных: ' + err.message);
@@ -157,29 +173,33 @@ app.post('/api/mark-as-paid', async (req, res) => {
     
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['waiting_confirmation', orderId]);
     
-    // Уведомление админу в Discord
-    if (discordBot && process.env.DISCORD_ADMIN_ID) {
+    // Уведомление владельцу в Discord (по роли)
+    if (discordBot && process.env.DISCORD_OWNER_ROLE_ID && process.env.DISCORD_GUILD_ID) {
       try {
-        const adminUser = await discordBot.users.fetch(process.env.DISCORD_ADMIN_ID);
-        if (adminUser) {
-          const embed = new EmbedBuilder()
-            .setColor(0xFFA500)
-            .setTitle('💰 Новый ожидающий заказ!')
-            .addFields(
-              { name: '📦 Заказ #', value: `${orderId}`, inline: true },
-              { name: '👤 Discord', value: `${req.user.username}`, inline: true },
-              { name: '🎮 Minecraft ник', value: `${order.rows[0].minecraft_nick}`, inline: true },
-              { name: '📦 Товар', value: `${order.rows[0].product_type}`, inline: true },
-              { name: '💵 Сумма', value: `${order.rows[0].price} ₽`, inline: true }
-            )
-            .setTimestamp()
-            .setFooter({ text: 'Зайдите в профиль на сайте, чтобы подтвердить или отклонить заказ.' });
-          
-          await adminUser.send({ embeds: [embed] });
-          console.log(`✅ Уведомление админу о заказе #${orderId}`);
+        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+        const ownerRole = guild.roles.cache.get(process.env.DISCORD_OWNER_ROLE_ID);
+        if (ownerRole) {
+          const channel = guild.systemChannel; // или укажи конкретный канал
+          if (channel) {
+            const embed = new EmbedBuilder()
+              .setColor(0xFFA500)
+              .setTitle('💰 Новый ожидающий заказ!')
+              .addFields(
+                { name: '📦 Заказ #', value: `${orderId}`, inline: true },
+                { name: '👤 Discord', value: `${req.user.username}`, inline: true },
+                { name: '🎮 Minecraft ник', value: `${order.rows[0].minecraft_nick}`, inline: true },
+                { name: '📦 Товар', value: `${order.rows[0].product_type}`, inline: true },
+                { name: '💵 Сумма', value: `${order.rows[0].price} ₽`, inline: true }
+              )
+              .setTimestamp()
+              .setFooter({ text: 'Зайдите в профиль на сайте, чтобы подтвердить или отклонить заказ.' });
+            
+            await channel.send({ content: `<@&${process.env.DISCORD_OWNER_ROLE_ID}>`, embeds: [embed] });
+            console.log(`✅ Уведомление отправлено в канал о заказе #${orderId}`);
+          }
         }
       } catch (err) {
-        console.error('❌ Ошибка отправки в ЛС:', err.message);
+        console.error('❌ Ошибка отправки уведомления:', err.message);
       }
     }
     
@@ -215,9 +235,9 @@ app.post('/api/cancel-order', async (req, res) => {
   }
 });
 
-// === АДМИНКА API ===
+// === АДМИНКА API (только для владельца по роли) ===
 app.get('/api/admin/orders', async (req, res) => {
-  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
+  if (!req.user || !req.user.isOwner) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const orders = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
@@ -225,7 +245,7 @@ app.get('/api/admin/orders', async (req, res) => {
 });
 
 app.post('/api/admin/confirm-order', async (req, res) => {
-  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
+  if (!req.user || !req.user.isOwner) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { orderId } = req.body;
@@ -233,6 +253,7 @@ app.post('/api/admin/confirm-order', async (req, res) => {
   try {
     await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
     
+    // Выдача роли спонсора в Discord
     const order = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
     if (order.rows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_ROLE_SPONSOR) {
       try {
@@ -256,7 +277,7 @@ app.post('/api/admin/confirm-order', async (req, res) => {
 });
 
 app.post('/api/admin/decline-order', async (req, res) => {
-  if (!req.user || req.user.id !== process.env.ADMIN_DISCORD_ID) {
+  if (!req.user || !req.user.isOwner) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { orderId } = req.body;
@@ -315,7 +336,7 @@ app.delete('/api/messages/:id', async (req, res) => {
     const userRole = userResult.rows[0].role;
     const isOwner = messageResult.rows[0].user_id === userId;
     const isModerator = ['Helper', 'Moderator', 'Sr.Moderator', 'Curator', 'Team', 'Leadership'].includes(userRole);
-    const isAdmin = req.user.id === process.env.ADMIN_DISCORD_ID;
+    const isAdmin = req.user.isOwner === true;
     
     if (isOwner || isModerator || isAdmin) {
       await pool.query('UPDATE forum_messages SET is_deleted = true WHERE id = $1', [req.params.id]);

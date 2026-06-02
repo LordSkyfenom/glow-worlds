@@ -5,7 +5,6 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
-const { Client, EmbedBuilder } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,17 +13,6 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
-
-// === Discord бот ===
-const discordBot = new Client({ intents: [] });
-
-discordBot.once('ready', () => {
-  console.log('🤖 Discord бот запущен');
-});
-
-discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
-  console.error('❌ Ошибка входа Discord бота:', err.message);
 });
 
 // === Настройки Express ===
@@ -53,64 +41,34 @@ passport.use(new DiscordStrategy({
   clientID: process.env.DISCORD_CLIENT_ID,
   clientSecret: process.env.DISCORD_CLIENT_SECRET,
   callbackURL: process.env.DISCORD_CALLBACK_URL,
-  scope: ['identify', 'guilds', 'guilds.members.read']
+  scope: ['identify']
 }, async (accessToken, refreshToken, profile, done) => {
   try {
-    let highestRoleName = 'Player';
-    let highestRolePosition = -1;
-    let isOwner = false;
-    let allRoles = [];
-    
-    if (discordBot && process.env.DISCORD_GUILD_ID) {
-      try {
-        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-        const member = await guild.members.fetch(profile.id);
-        
-        const sortedRoles = member.roles.cache
-          .filter(role => role.name !== '@everyone')
-          .sort((a, b) => b.position - a.position);
-        
-        allRoles = sortedRoles.map(r => ({ id: r.id, name: r.name, position: r.position }));
-        
-        const highestRole = sortedRoles.first();
-        if (highestRole) {
-          highestRoleName = highestRole.name;
-          highestRolePosition = highestRole.position;
-        }
-        
-        isOwner = sortedRoles.some(role => role.id === process.env.DISCORD_OWNER_ROLE_ID);
-        
-        console.log(`👤 ${profile.username}`);
-        console.log(`   📋 Все роли: ${allRoles.map(r => `${r.name}(${r.position})`).join(', ')}`);
-        console.log(`   ⭐ Высшая роль: ${highestRoleName} (позиция ${highestRolePosition})`);
-        console.log(`   👑 Владелец: ${isOwner}`);
-        
-      } catch (err) {
-        console.error('❌ Ошибка получения ролей:', err.message);
-      }
-    } else {
-      console.log(`⚠️ Бот или GUILD_ID не настроены для пользователя ${profile.username}`);
-    }
+    // Проверяем, является ли пользователь владельцем по DISCORD_ADMIN_ID
+    const isOwner = (profile.id === process.env.DISCORD_ADMIN_ID);
+    const role = isOwner ? 'Руководство' : 'Player';
     
     const result = await pool.query('SELECT * FROM users WHERE discord_id = $1', [profile.id]);
     
     if (result.rows.length === 0) {
       await pool.query(
         'INSERT INTO users (discord_id, username, avatar, role, is_owner) VALUES ($1, $2, $3, $4, $5)',
-        [profile.id, profile.username, profile.avatar, highestRoleName, isOwner]
+        [profile.id, profile.username, profile.avatar, role, isOwner]
       );
     } else {
       await pool.query(
         'UPDATE users SET username = $1, avatar = $2, role = $3, is_owner = $4 WHERE discord_id = $5',
-        [profile.username, profile.avatar, highestRoleName, isOwner, profile.id]
+        [profile.username, profile.avatar, role, isOwner, profile.id]
       );
     }
+    
+    console.log(`👤 ${profile.username} — роль: ${role} | владелец: ${isOwner}`);
     
     return done(null, {
       id: profile.id,
       username: profile.username,
       avatar: profile.avatar,
-      role: highestRoleName,
+      role: role,
       isOwner: isOwner
     });
   } catch (err) {
@@ -119,39 +77,12 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === ОТЛАДОЧНЫЙ МАРШРУТ ===
-app.get('/debug-guild', async (req, res) => {
-  if (!req.user) return res.status(401).send('Не авторизован. <a href="/auth/discord">Войдите через Discord</a>');
-  
-  try {
-    if (!discordBot || !discordBot.isReady()) {
-      return res.json({ error: 'Discord бот не готов или не запущен' });
-    }
-    
-    const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-    const member = await guild.members.fetch(req.user.id);
-    const roles = member.roles.cache.map(r => ({ id: r.id, name: r.name, position: r.position }));
-    
-    res.json({
-      guildName: guild.name,
-      guildId: guild.id,
-      memberName: member.user.username,
-      memberId: member.id,
-      roles: roles.sort((a, b) => b.position - a.position),
-      isOwner: roles.some(r => r.id === process.env.DISCORD_OWNER_ROLE_ID),
-      ownerRoleId: process.env.DISCORD_OWNER_ROLE_ID
-    });
-  } catch (err) {
-    res.json({ error: err.message, stack: err.stack });
-  }
-});
-
 // === Роуты страниц ===
 app.get('/', (req, res) => res.render('index', { user: req.user }));
 app.get('/donate', (req, res) => res.render('donate', { user: req.user }));
 app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
 
-// === Профиль ===
+// === Профиль (админка для владельца) ===
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
@@ -182,7 +113,7 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// === ДОНАТ: создание заказа ===
+// === ДОНАТ ===
 app.post('/create-order', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -200,7 +131,7 @@ app.post('/create-order', async (req, res) => {
     );
     const orderId = result.rows[0].id;
     
-    const paymentUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.YMONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${orderId}&sum=${price}&comment=order_${orderId}&successURL=${process.env.BASE_URL}/donate`;
+    const paymentUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.MONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${orderId}&sum=${price}&comment=order_${orderId}&successURL=${process.env.BASE_URL}/donate`;
     
     res.json({ orderId, price, paymentUrl, success: true });
   } catch (err) {
@@ -209,7 +140,6 @@ app.post('/create-order', async (req, res) => {
   }
 });
 
-// === Пользователь нажал "Я оплатил" ===
 app.post('/api/mark-as-paid', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -222,37 +152,6 @@ app.post('/api/mark-as-paid', async (req, res) => {
     }
     
     await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['waiting_confirmation', orderId]);
-    
-    // Уведомление владельцу в Discord
-    if (discordBot && process.env.DISCORD_OWNER_ROLE_ID && process.env.DISCORD_GUILD_ID) {
-      try {
-        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-        const ownerRole = guild.roles.cache.get(process.env.DISCORD_OWNER_ROLE_ID);
-        if (ownerRole) {
-          const channel = guild.systemChannel;
-          if (channel) {
-            const embed = new EmbedBuilder()
-              .setColor(0xFFA500)
-              .setTitle('💰 Новый ожидающий заказ!')
-              .addFields(
-                { name: '📦 Заказ #', value: `${orderId}`, inline: true },
-                { name: '👤 Discord', value: `${req.user.username}`, inline: true },
-                { name: '🎮 Minecraft ник', value: `${order.rows[0].minecraft_nick}`, inline: true },
-                { name: '📦 Товар', value: `${order.rows[0].product_type}`, inline: true },
-                { name: '💵 Сумма', value: `${order.rows[0].price} ₽`, inline: true }
-              )
-              .setTimestamp()
-              .setFooter({ text: 'Зайдите в профиль на сайте, чтобы подтвердить или отклонить заказ.' });
-            
-            await channel.send({ content: `<@&${process.env.DISCORD_OWNER_ROLE_ID}>`, embeds: [embed] });
-            console.log(`✅ Уведомление отправлено в канал о заказе #${orderId}`);
-          }
-        }
-      } catch (err) {
-        console.error('❌ Ошибка отправки уведомления:', err.message);
-      }
-    }
-    
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -260,7 +159,6 @@ app.post('/api/mark-as-paid', async (req, res) => {
   }
 });
 
-// === Отмена заказа пользователем ===
 app.post('/api/cancel-order', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -299,30 +197,8 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { orderId } = req.body;
-  
-  try {
-    await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
-    
-    const order = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
-    if (order.rows.length > 0 && process.env.DISCORD_GUILD_ID && process.env.DISCORD_ROLE_SPONSOR) {
-      try {
-        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-        const member = await guild.members.fetch(order.rows[0].discord_id);
-        
-        await member.roles.add(process.env.DISCORD_ROLE_SPONSOR);
-        console.log(`✅ Роль спонсора выдана ${member.user.username}`);
-        
-        await member.send(`🎉 Ваш заказ #${orderId} подтверждён! Роль спонсора выдана. Спасибо за поддержку сервера Glow Worlds!`);
-      } catch (err) {
-        console.error('❌ Ошибка выдачи роли:', err.message);
-      }
-    }
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
+  await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
+  res.json({ success: true });
 });
 
 app.post('/api/admin/decline-order', async (req, res) => {

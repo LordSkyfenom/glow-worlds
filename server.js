@@ -16,10 +16,14 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// === Discord бот ===
+// === Discord бот (только для проверки ролей) ===
 const discordBot = new Client({ intents: [] });
-discordBot.once('ready', () => console.log('🤖 Discord бот запущен'));
-discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => console.error('❌ Ошибка входа Discord бота:', err.message));
+discordBot.once('ready', () => {
+  console.log('🤖 Discord бот запущен (только для ролей)');
+});
+discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
+  console.error('❌ Ошибка входа Discord бота:', err.message);
+});
 
 // === Настройки Express ===
 app.use(express.json());

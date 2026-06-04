@@ -29,7 +29,6 @@
         .btn-red { background: #ff5555; color: white; }
         .delete-btn { background: none; border: none; color: red; cursor: pointer; font-size: 14px; margin-left: 10px; }
         
-        /* Новая карточка города (картинка слева, описание справа) */
         .city-detail {
             display: flex;
             gap: 20px;
@@ -65,7 +64,6 @@
             flex-wrap: wrap;
         }
         
-        /* Красивая кнопка создания города */
         .create-city-btn {
             background: linear-gradient(135deg, #24af68, #1e8e55);
             color: white;
@@ -125,7 +123,6 @@
                 <div class="tab" data-tab="news">📰 Новости</div>
             </div>
 
-            <!-- Вкладка Чат -->
             <div id="chat" class="tab-content active">
                 <div id="chat-messages" class="messages">Загрузка...</div>
                 <div class="input-area">
@@ -134,23 +131,26 @@
                 </div>
             </div>
 
-            <!-- Вкладка Города -->
             <div id="cities" class="tab-content">
                 <button id="create-city-btn" class="create-city-btn">➕ Создать город</button>
                 <div id="cities-list" class="cities-list">Загрузка...</div>
             </div>
 
-            <!-- Вкладка Новости -->
             <div id="news" class="tab-content">
                 <div id="news-messages" class="messages">Загрузка...</div>
-                <div class="input-area">
-                    <input type="text" id="news-input" placeholder="Сообщение...">
-                    <button id="news-send">Отправить</button>
-                </div>
+                <% if (user && user.isOwner) { %>
+                    <div class="input-area">
+                        <input type="text" id="news-input" placeholder="Сообщение...">
+                        <button id="news-send">Отправить</button>
+                    </div>
+                <% } else { %>
+                    <div class="input-area" style="justify-content: center;">
+                        <p style="color: #999;">✏️ Только администратор может писать новости</p>
+                    </div>
+                <% } %>
             </div>
         </div>
 
-        <!-- Модальное окно создания города -->
         <div id="create-city-modal" class="modal">
             <div class="modal-content">
                 <h3>Создать город</h3>
@@ -163,7 +163,6 @@
             </div>
         </div>
 
-        <!-- Модальное окно карточки города (новый дизайн) -->
         <div id="city-card-modal" class="modal">
             <div class="modal-content" id="city-card-content"></div>
         </div>
@@ -173,7 +172,6 @@
         const user = <%- JSON.stringify(user || null) %>;
         let currentCategory = 'friends';
 
-        // === Чат ===
         async function loadMessages(category, containerId) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -213,7 +211,6 @@
             if (category === 'news') loadMessages('news', 'news-messages');
         }
 
-        // === Города ===
         async function loadCities() {
             const container = document.getElementById('cities-list');
             if (!container) return;
@@ -277,7 +274,6 @@
             closeCityCard();
         }
 
-        // === Создание города ===
         document.getElementById('create-city-btn')?.addEventListener('click', () => {
             document.getElementById('create-city-modal').style.display = 'flex';
         });
@@ -306,7 +302,6 @@
             document.getElementById('create-city-modal').style.display = 'none';
         });
 
-        // === Переключение вкладок ===
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -321,7 +316,6 @@
 
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
 
-        // Инициализация
         loadMessages('friends', 'chat-messages');
         loadMessages('news', 'news-messages');
         setInterval(() => {

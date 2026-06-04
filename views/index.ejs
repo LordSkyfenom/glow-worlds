@@ -5,6 +5,21 @@
     <link rel="stylesheet" href="/css/style.css">
     <link rel="icon" href="/images/crystal.png">
     <style>
+        .servers-header {
+            background: #3a3a3a;
+            height: 50px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 0;
+        }
+        .servers-header h3 {
+            color: #24af68;
+            font-size: 22px;
+            margin: 0;
+            letter-spacing: 1px;
+        }
         .server-showcase {
             background: #e9e9e9;
             border-radius: 30px;
@@ -172,6 +187,10 @@
 
     <img src="/images/home.png" alt="Banner" class="banner">
 
+    <div class="servers-header">
+        <h3>📌 Наши сервера</h3>
+    </div>
+
     <div class="server-showcase">
         <div class="section-title">📌 Наши сервера</div>
         <div class="server-image">
@@ -185,7 +204,7 @@
                     <p><%= server.version %></p>
                     <div class="online">
                         <span class="online-dot"></span>
-                        Онлайн: <span class="online-count" data-server-id="<%= server.id %>">0</span> / 20
+                        Онлайн: <span class="online-count" data-server-id="<%= server.id %>">0</span> / <span class="online-max">20</span>
                     </div>
                     <button onclick="copyIP('<%= server.ip %>')">📋 Копировать IP</button>
                 </div>
@@ -222,13 +241,18 @@
         
         async function updateOnline() {
             try {
-                const res = await fetch('/api/online');
-                const data = await res.json();
+                const response = await fetch('/api/online');
+                const data = await response.json();
+                console.log('📊 Онлайн с сервера:', data);
                 document.querySelectorAll('.online-count').forEach(el => {
-                    const serverId = el.dataset.serverId;
-                    el.textContent = data[serverId] || 0;
+                    el.textContent = data.online || 0;
                 });
-            } catch(e) { console.error('Ошибка обновления онлайна'); }
+                document.querySelectorAll('.online-max').forEach(el => {
+                    el.textContent = data.max || 20;
+                });
+            } catch (error) {
+                console.error('❌ Ошибка получения онлайна:', error);
+            }
         }
         
         document.getElementById('aboutImage')?.addEventListener('error', function() {

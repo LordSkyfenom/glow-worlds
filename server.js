@@ -5,6 +5,7 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
+const Rcon = require('rcon');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,6 +18,26 @@ const pool = new Pool({
 
 // === Глобальная переменная для онлайна ===
 let currentOnline = { online: 0, max: 20 };
+
+// === RCON функция ===
+async function sendRconCommand(command) {
+    return new Promise((resolve) => {
+        const conn = new Rcon(process.env.RCON_HOST, process.env.RCON_PORT, process.env.RCON_PASSWORD);
+        
+        conn.on('auth', () => {
+            conn.send(command);
+            conn.disconnect();
+            resolve(true);
+        });
+        
+        conn.on('error', (err) => {
+            console.error('❌ RCON ошибка:', err);
+            resolve(false);
+        });
+        
+        conn.connect();
+    });
+}
 
 // === Настройки Express ===
 app.use(express.json());
@@ -182,13 +203,39 @@ app.get('/api/admin/orders', async (req, res) => {
 
 app.post('/api/admin/confirm-order', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
-  await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', req.body.orderId]);
-  res.json({ success: true });
+  const { orderId } = req.body;
+  
+  try {
+    // Получаем информацию о заказе
+    const order = await pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
+    if (order.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    
+    const product = order.rows[0].product_type;
+    const nick = order.rows[0].minecraft_nick;
+    
+    // Выполняем RCON команду в зависимости от товара
+    if (product === 'Светокамень' || product === 'Sponsor' || product === 'Спонсор') {
+      await sendRconCommand(`lp user ${nick} parent add glowstone`);
+    } else if (product === 'Проходка' || product === 'pickaxe') {
+      await sendRconCommand(`whitelist add ${nick}`);
+    } else if (product === 'Разбан' || product === 'key') {
+      await sendRconCommand(`pardon ${nick}`);
+    }
+    
+    // Обновляем статус заказа
+    await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/admin/decline-order', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
-  await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', req.body.orderId]);
+  const { orderId } = req.body;
+  await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId]);
   res.json({ success: true });
 });
 

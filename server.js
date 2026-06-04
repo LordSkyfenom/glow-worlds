@@ -15,6 +15,9 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// === Глобальная переменная для онлайна ===
+let currentOnline = { online: 0, max: 20 };
+
 // === Настройки Express ===
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -333,7 +336,21 @@ app.delete('/api/messages/:id', async (req, res) => {
   }
 });
 
-app.get('/api/online', (req, res) => res.json({ online: 0, max: 20 }));
+// === API: обновление онлайна от плагина ===
+app.post('/api/online/update', (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  if (apiKey !== 'glow_secret_2024') {
+    return res.status(403).json({ error: 'Invalid API key' });
+  }
+  currentOnline = { online: req.body.online || 0, max: req.body.max || 20 };
+  console.log(`📊 Онлайн обновлён: ${currentOnline.online}/${currentOnline.max}`);
+  res.json({ success: true });
+});
+
+// === API: получение онлайна для сайта ===
+app.get('/api/online', (req, res) => {
+  res.json(currentOnline);
+});
 
 // === Запуск ===
 app.listen(port, () => {

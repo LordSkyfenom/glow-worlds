@@ -84,14 +84,19 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === Middleware проверки доступа к форуму ===
+// === Middleware проверки доступа к форуму (безопасная версия) ===
 async function checkForumAccess(req, res, next) {
   if (!req.user) return res.redirect('/auth/discord');
   
   try {
     const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(req.user.id);
-    const userRoles = member.roles.cache.map(role => role.id);
+    
+    // Безопасное получение ролей
+    const userRoles = member.roles && member.roles.cache 
+      ? member.roles.cache.map(role => role.id) 
+      : [];
+    
     const hasAccess = userRoles.includes(process.env.DISCORD_FORUM_ROLE_ID);
     req.hasForumAccess = hasAccess;
     next();
@@ -102,39 +107,42 @@ async function checkForumAccess(req, res, next) {
   }
 }
 
-// === ОТЛАДОЧНЫЙ МАРШРУТ simple-debug ===
+// === ОТЛАДОЧНЫЙ МАРШРУТ simple-debug (безопасная версия) ===
 app.get('/simple-debug', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
   try {
-    // Проверяем статус бота
     const botStatus = {
       isReady: discordBot.isReady(),
       botUser: discordBot.user ? discordBot.user.tag : null
     };
     
-    // Пробуем получить сервер
     let guildInfo = { error: null, exists: false };
-    try {
-      const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-      guildInfo.exists = true;
-      guildInfo.name = guild.name;
-      guildInfo.id = guild.id;
-    } catch (err) {
-      guildInfo.error = err.message;
-    }
+    let memberInfo = { error: null, exists: false, roles: [] };
     
-    // Пробуем получить участника
-    let memberInfo = { error: null, exists: false };
-    if (guildInfo.exists) {
+    if (discordBot.isReady()) {
       try {
         const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-        const member = await guild.members.fetch(req.user.id);
-        memberInfo.exists = true;
-        memberInfo.userName = member.user.username;
-        memberInfo.roles = member.roles.cache.map(r => ({ id: r.id, name: r.name }));
+        guildInfo.exists = true;
+        guildInfo.name = guild.name;
+        guildInfo.id = guild.id;
+        
+        try {
+          const member = await guild.members.fetch(req.user.id);
+          memberInfo.exists = true;
+          memberInfo.userName = member.user.username;
+          // Безопасное получение ролей
+          if (member.roles && member.roles.cache) {
+            memberInfo.roles = member.roles.cache.map(r => ({ id: r.id, name: r.name }));
+          } else {
+            memberInfo.roles = [];
+            memberInfo.warning = 'roles.cache не доступен';
+          }
+        } catch (err) {
+          memberInfo.error = err.message;
+        }
       } catch (err) {
-        memberInfo.error = err.message;
+        guildInfo.error = err.message;
       }
     }
     

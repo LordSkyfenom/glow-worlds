@@ -5,7 +5,6 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
-const { Client } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -14,15 +13,6 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
-
-// === Discord бот (только для проверки ролей) ===
-const discordBot = new Client({ intents: [] });
-discordBot.once('ready', () => {
-  console.log('🤖 Discord бот запущен (только для ролей)');
-});
-discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
-  console.error('❌ Ошибка входа Discord бота:', err.message);
 });
 
 // === Настройки Express ===
@@ -51,7 +41,7 @@ passport.use(new DiscordStrategy({
   clientID: process.env.DISCORD_CLIENT_ID,
   clientSecret: process.env.DISCORD_CLIENT_SECRET,
   callbackURL: process.env.DISCORD_CALLBACK_URL,
-  scope: ['identify', 'guilds', 'guilds.members.read']
+  scope: ['identify']
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     const isOwner = (profile.id === process.env.DISCORD_ADMIN_ID);
@@ -84,20 +74,25 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === Middleware проверки доступа к форуму (безопасная версия) ===
+// === ПРОВЕРКА ДОСТУПА К ФОРУМУ (через Bot Token, как в старом коде) ===
 async function checkForumAccess(req, res, next) {
   if (!req.user) return res.redirect('/auth/discord');
   
   try {
-    const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-    const member = await guild.members.fetch(req.user.id);
+    const memberRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${req.user.id}`, {
+      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` }
+    });
     
-    // Безопасное получение ролей
-    const userRoles = member.roles && member.roles.cache 
-      ? member.roles.cache.map(role => role.id) 
-      : [];
+    if (!memberRes.ok) {
+      console.log('⚠️ Не удалось получить роли пользователя');
+      req.hasForumAccess = false;
+      return next();
+    }
     
-    const hasAccess = userRoles.includes(process.env.DISCORD_FORUM_ROLE_ID);
+    const memberData = await memberRes.json();
+    const userRoleIds = memberData.roles || [];
+    
+    const hasAccess = userRoleIds.includes(process.env.DISCORD_FORUM_ROLE_ID);
     req.hasForumAccess = hasAccess;
     next();
   } catch (err) {
@@ -107,53 +102,28 @@ async function checkForumAccess(req, res, next) {
   }
 }
 
-// === ОТЛАДОЧНЫЙ МАРШРУТ simple-debug (безопасная версия) ===
-app.get('/simple-debug', async (req, res) => {
+// === ОТЛАДОЧНЫЙ МАРШРУТ (как в старом коде) ===
+app.get('/debug-roles', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
   try {
-    const botStatus = {
-      isReady: discordBot.isReady(),
-      botUser: discordBot.user ? discordBot.user.tag : null
-    };
+    const memberRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${req.user.id}`, {
+      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` }
+    });
     
-    let guildInfo = { error: null, exists: false };
-    let memberInfo = { error: null, exists: false, roles: [] };
-    
-    if (discordBot.isReady()) {
-      try {
-        const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
-        guildInfo.exists = true;
-        guildInfo.name = guild.name;
-        guildInfo.id = guild.id;
-        
-        try {
-          const member = await guild.members.fetch(req.user.id);
-          memberInfo.exists = true;
-          memberInfo.userName = member.user.username;
-          // Безопасное получение ролей
-          if (member.roles && member.roles.cache) {
-            memberInfo.roles = member.roles.cache.map(r => ({ id: r.id, name: r.name }));
-          } else {
-            memberInfo.roles = [];
-            memberInfo.warning = 'roles.cache не доступен';
-          }
-        } catch (err) {
-          memberInfo.error = err.message;
-        }
-      } catch (err) {
-        guildInfo.error = err.message;
-      }
+    if (!memberRes.ok) {
+      return res.json({ error: 'Не удалось получить роли', status: memberRes.status });
     }
     
+    const memberData = await memberRes.json();
+    const userRoleIds = memberData.roles || [];
+    
     res.json({
-      bot: botStatus,
-      guild: guildInfo,
-      member: memberInfo,
-      env: {
-        guildId: process.env.DISCORD_GUILD_ID,
-        forumRoleId: process.env.DISCORD_FORUM_ROLE_ID
-      }
+      userId: req.user.id,
+      userName: req.user.username,
+      roleIds: userRoleIds,
+      hasForumRole: userRoleIds.includes(process.env.DISCORD_FORUM_ROLE_ID),
+      forumRoleId: process.env.DISCORD_FORUM_ROLE_ID
     });
   } catch (err) {
     res.json({ error: err.message });

@@ -5,6 +5,7 @@ const passport = require('passport');
 const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
+const { Client } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;

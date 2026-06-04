@@ -264,21 +264,37 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     const product = order.rows[0].product_type;
     const nick = order.rows[0].minecraft_nick;
     
+    console.log('📦 Данные заказа:', order.rows[0]);
+    
     // Выполняем RCON команду в зависимости от товара и выдаём роль в Discord
     if (product === 'Светокамень' || product === 'Sponsor' || product === 'Спонсор') {
       // RCON команда на сервер
       await sendRconCommand(`lp user ${nick} parent addtemp glowstone 30d`);
       
-      // Выдача роли в Discord
+      // Выдача роли в Discord (с подробным логированием)
+      console.log('🔍 Проверка выдачи роли в Discord...');
+      console.log('DISCORD_ROLE_GLOWSTONE:', process.env.DISCORD_ROLE_GLOWSTONE);
+      console.log('DISCORD_GUILD_ID:', process.env.DISCORD_GUILD_ID);
+      console.log('discord_id пользователя:', order.rows[0].discord_id);
+      
       if (process.env.DISCORD_ROLE_GLOWSTONE && process.env.DISCORD_GUILD_ID) {
         try {
+          console.log('🔍 Пытаемся получить сервер...');
           const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+          console.log('✅ Сервер получен:', guild.name);
+          
+          console.log('🔍 Пытаемся получить участника...');
           const member = await guild.members.fetch(order.rows[0].discord_id);
+          console.log('✅ Участник найден:', member.user.username);
+          
+          console.log('🔍 Добавляем роль...');
           await member.roles.add(process.env.DISCORD_ROLE_GLOWSTONE);
           console.log(`✅ Роль Светокамень выдана ${member.user.username} в Discord`);
         } catch (err) {
           console.error('❌ Ошибка выдачи роли в Discord:', err.message);
         }
+      } else {
+        console.log('⚠️ Переменные DISCORD_ROLE_GLOWSTONE или DISCORD_GUILD_ID не заданы');
       }
     } else if (product === 'Проходка' || product === 'pickaxe') {
       await sendRconCommand(`whitelist add ${nick}`);

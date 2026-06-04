@@ -15,6 +15,11 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// === Discord бот ===
+const discordBot = new Client({ intents: [] });
+discordBot.once('ready', () => console.log('🤖 Discord бот запущен'));
+discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => console.error('❌ Ошибка входа Discord бота:', err.message));
+
 // === Настройки Express ===
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -41,7 +46,7 @@ passport.use(new DiscordStrategy({
   clientID: process.env.DISCORD_CLIENT_ID,
   clientSecret: process.env.DISCORD_CLIENT_SECRET,
   callbackURL: process.env.DISCORD_CALLBACK_URL,
-  scope: ['identify']
+  scope: ['identify', 'guilds', 'guilds.members.read']
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     const isOwner = (profile.id === process.env.DISCORD_ADMIN_ID);
@@ -74,6 +79,23 @@ passport.use(new DiscordStrategy({
   }
 }));
 
+// === Middleware проверки доступа к форуму ===
+async function checkForumAccess(req, res, next) {
+  if (!req.user) return res.redirect('/auth/discord');
+  try {
+    const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(req.user.id);
+    const userRoles = member.roles.cache.map(role => role.id);
+    const hasAccess = userRoles.includes(process.env.DISCORD_FORUM_ROLE_ID);
+    req.hasForumAccess = hasAccess;
+    next();
+  } catch (err) {
+    console.error('❌ Ошибка проверки доступа к форуму:', err.message);
+    req.hasForumAccess = false;
+    next();
+  }
+}
+
 // === Роуты страниц ===
 app.get('/', async (req, res) => {
   const servers = await pool.query('SELECT * FROM servers WHERE active = true ORDER BY id');
@@ -85,7 +107,9 @@ app.get('/donate', async (req, res) => {
   res.render('donate', { user: req.user, products: products.rows });
 });
 
-app.get('/forum', (req, res) => res.render('forum', { user: req.user }));
+app.get('/forum', checkForumAccess, (req, res) => {
+  res.render('forum', { user: req.user, hasForumAccess: req.hasForumAccess });
+});
 
 app.get('/profile', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
@@ -93,7 +117,6 @@ app.get('/profile', async (req, res) => {
   res.render('profile', { user: req.user, orders: orders.rows });
 });
 
-// === Админ панель ===
 app.get('/admin-panel', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).send('Доступ запрещён');
   const products = await pool.query('SELECT * FROM donate_products ORDER BY id');
@@ -106,7 +129,7 @@ app.get('/auth/discord', passport.authenticate('discord'));
 app.get('/auth/discord/callback', passport.authenticate('discord', { failureRedirect: '/' }), (req, res) => res.redirect('/'));
 app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 
-// === API: удаление своего заказа (только confirmed/cancelled) ===
+// === API: удаление своего заказа ===
 app.delete('/api/delete-order/:id', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const order = await pool.query('SELECT * FROM orders WHERE id = $1 AND discord_id = $2', [req.params.id, req.user.id]);
@@ -214,7 +237,45 @@ app.delete('/api/admin/delete-server/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/online', (req, res) => res.json({ online: 0, max: 20 }));
+// === API: города ===
+app.get('/api/cities', async (req, res) => {
+  try {
+    const cities = await pool.query('SELECT * FROM cities ORDER BY created_at DESC');
+    res.json(cities.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cities', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { name, description, image_url, discord_link } = req.body;
+  if (!name || !discord_link) return res.status(400).json({ error: 'Название и ссылка на Discord обязательны' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO cities (name, description, image_url, discord_link, owner_discord_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [name, description || '', image_url || '', discord_link, req.user.id]
+    );
+    res.json({ success: true, cityId: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/cities/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const city = await pool.query('SELECT * FROM cities WHERE id = $1', [req.params.id]);
+    if (city.rows.length === 0) return res.status(404).json({ error: 'Город не найден' });
+    const isOwner = city.rows[0].owner_discord_id === req.user.id;
+    const isAdmin = req.user.isOwner === true;
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'Нет прав для удаления' });
+    await pool.query('DELETE FROM cities WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // === API: сообщения форума ===
 app.get('/api/messages', async (req, res) => {
@@ -256,6 +317,8 @@ app.delete('/api/messages/:id', async (req, res) => {
     res.status(403).json({ error: 'No permission' });
   }
 });
+
+app.get('/api/online', (req, res) => res.json({ online: 0, max: 20 }));
 
 // === Запуск ===
 app.listen(port, () => {

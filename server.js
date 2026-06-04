@@ -74,7 +74,7 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === ПРОВЕРКА ДОСТУПА К ФОРУМУ (через Bot Token, как в старом коде) ===
+// === ПРОВЕРКА ДОСТУПА К ФОРУМУ (через Bot Token) ===
 async function checkForumAccess(req, res, next) {
   if (!req.user) return res.redirect('/auth/discord');
   
@@ -102,7 +102,7 @@ async function checkForumAccess(req, res, next) {
   }
 }
 
-// === ОТЛАДОЧНЫЙ МАРШРУТ (как в старом коде) ===
+// === ОТЛАДОЧНЫЙ МАРШРУТ ===
 app.get('/debug-roles', async (req, res) => {
   if (!req.user) return res.redirect('/auth/discord');
   
@@ -327,9 +327,18 @@ app.get('/api/messages', async (req, res) => {
 
 app.post('/api/messages', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  
   const { category, message } = req.body;
+  if (!category || !message) return res.status(400).json({ error: 'Missing fields' });
+  
+  // Только владелец может писать в новости
+  if (category === 'news' && !req.user.isOwner) {
+    return res.status(403).json({ error: 'Только администратор может писать в новости' });
+  }
+  
   const userResult = await pool.query('SELECT id FROM users WHERE discord_id = $1', [req.user.id]);
   if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+  
   await pool.query('INSERT INTO forum_messages (user_id, category, message) VALUES ($1, $2, $3)', [userResult.rows[0].id, category, message]);
   res.json({ success: true });
 });

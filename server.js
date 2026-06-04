@@ -215,7 +215,7 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     
     // Выполняем RCON команду в зависимости от товара
     if (product === 'Светокамень' || product === 'Sponsor' || product === 'Спонсор') {
-      await sendRconCommand(`lp user ${nick} parent add glowstone`);
+      await sendRconCommand(`lp user ${nick} parent addtemp glowstone 30d`);
     } else if (product === 'Проходка' || product === 'pickaxe') {
       await sendRconCommand(`whitelist add ${nick}`);
     } else if (product === 'Разбан' || product === 'key') {

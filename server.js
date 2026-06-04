@@ -264,9 +264,22 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     const product = order.rows[0].product_type;
     const nick = order.rows[0].minecraft_nick;
     
-    // Выполняем RCON команду в зависимости от товара
+    // Выполняем RCON команду в зависимости от товара и выдаём роль в Discord
     if (product === 'Светокамень' || product === 'Sponsor' || product === 'Спонсор') {
+      // RCON команда на сервер
       await sendRconCommand(`lp user ${nick} parent addtemp glowstone 30d`);
+      
+      // Выдача роли в Discord
+      if (process.env.DISCORD_ROLE_GLOWSTONE && process.env.DISCORD_GUILD_ID) {
+        try {
+          const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+          const member = await guild.members.fetch(order.rows[0].discord_id);
+          await member.roles.add(process.env.DISCORD_ROLE_GLOWSTONE);
+          console.log(`✅ Роль Светокамень выдана ${member.user.username} в Discord`);
+        } catch (err) {
+          console.error('❌ Ошибка выдачи роли в Discord:', err.message);
+        }
+      }
     } else if (product === 'Проходка' || product === 'pickaxe') {
       await sendRconCommand(`whitelist add ${nick}`);
     } else if (product === 'Разбан' || product === 'key') {

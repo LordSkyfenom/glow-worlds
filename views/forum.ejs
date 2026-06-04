@@ -28,63 +28,15 @@
         .btn-green { background: #24af68; color: white; }
         .btn-red { background: #ff5555; color: white; }
         .delete-btn { background: none; border: none; color: red; cursor: pointer; font-size: 14px; margin-left: 10px; }
-        
-        .city-detail {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
-            text-align: left;
-            flex-wrap: wrap;
-        }
-        .city-detail-img {
-            flex: 0 0 120px;
-            max-width: 120px;
-        }
-        .city-detail-img img {
-            width: 100%;
-            border-radius: 15px;
-            object-fit: cover;
-        }
-        .city-detail-info {
-            flex: 1;
-            min-width: 200px;
-        }
-        .city-detail-info h3 {
-            margin: 0 0 10px 0;
-            color: #24af68;
-        }
-        .city-detail-info p {
-            margin: 10px 0;
-            line-height: 1.4;
-        }
-        .city-detail-buttons {
-            margin-top: 15px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .create-city-btn {
-            background: linear-gradient(135deg, #24af68, #1e8e55);
-            color: white;
-            border: none;
-            padding: 12px 28px;
-            border-radius: 30px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-bottom: 25px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .create-city-btn:hover {
-            background: linear-gradient(135deg, #1e8e55, #156b42);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
-        }
+        .city-detail { display: flex; gap: 20px; align-items: flex-start; text-align: left; flex-wrap: wrap; }
+        .city-detail-img { flex: 0 0 120px; max-width: 120px; }
+        .city-detail-img img { width: 100%; border-radius: 15px; object-fit: cover; }
+        .city-detail-info { flex: 1; min-width: 200px; }
+        .city-detail-info h3 { margin: 0 0 10px 0; color: #24af68; }
+        .city-detail-info p { margin: 10px 0; line-height: 1.4; }
+        .city-detail-buttons { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .create-city-btn { background: linear-gradient(135deg, #24af68, #1e8e55); color: white; border: none; padding: 12px 28px; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 25px; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-flex; align-items: center; gap: 8px; }
+        .create-city-btn:hover { background: linear-gradient(135deg, #1e8e55, #156b42); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
@@ -112,7 +64,6 @@
         <div class="forum-container" style="text-align: center; padding: 60px;">
             <h2>🔒 Доступ ограничен</h2>
             <p>Форум доступен только для игроков с определённой ролью на нашем Discord сервере.</p>
-            <p>Пожалуйста, получите роль <strong>«Игрок»</strong> или выше, чтобы продолжить.</p>
             <a href="https://discord.gg/glow-vanilla" class="btn-green" target="_blank" style="display: inline-block; margin-top: 20px; padding: 10px 20px; border-radius: 30px; text-decoration: none;">💬 Перейти в Discord</a>
         </div>
     <% } else { %>
@@ -194,21 +145,24 @@
             const input = document.getElementById(inputId);
             const message = input.value.trim();
             if (!message) return;
-            await fetch('/api/messages', {
+            const res = await fetch('/api/messages', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ category, message })
             });
-            input.value = '';
-            if (category === 'friends') loadMessages('friends', 'chat-messages');
-            if (category === 'news') loadMessages('news', 'news-messages');
+            if (res.ok) {
+                input.value = '';
+                loadMessages(category, category === 'friends' ? 'chat-messages' : 'news-messages');
+            } else {
+                const err = await res.json();
+                alert('Ошибка: ' + (err.error || 'Неизвестная ошибка'));
+            }
         }
 
         async function deleteMessage(id, category) {
             if (!confirm('Удалить сообщение?')) return;
             await fetch(`/api/messages/${id}`, { method: 'DELETE' });
-            if (category === 'friends') loadMessages('friends', 'chat-messages');
-            if (category === 'news') loadMessages('news', 'news-messages');
+            loadMessages(category, category === 'friends' ? 'chat-messages' : 'news-messages');
         }
 
         async function loadCities() {
@@ -256,40 +210,18 @@
             modal.style.display = 'flex';
         }
 
-        function closeCityCard() {
-            document.getElementById('city-card-modal').style.display = 'none';
-        }
+        function closeCityCard() { document.getElementById('city-card-modal').style.display = 'none'; }
+        function joinCity(link) { if (confirm('Перейти в Discord сервер города?')) { window.open(link, '_blank'); } closeCityCard(); }
+        async function deleteCity(id) { if (!confirm('Удалить город навсегда?')) return; await fetch(`/api/cities/${id}`, { method: 'DELETE' }); loadCities(); closeCityCard(); }
 
-        function joinCity(link) {
-            if (confirm('Перейти в Discord сервер города?')) {
-                window.open(link, '_blank');
-            }
-            closeCityCard();
-        }
-
-        async function deleteCity(id) {
-            if (!confirm('Удалить город навсегда?')) return;
-            await fetch(`/api/cities/${id}`, { method: 'DELETE' });
-            loadCities();
-            closeCityCard();
-        }
-
-        document.getElementById('create-city-btn')?.addEventListener('click', () => {
-            document.getElementById('create-city-modal').style.display = 'flex';
-        });
+        document.getElementById('create-city-btn')?.addEventListener('click', () => document.getElementById('create-city-modal').style.display = 'flex');
         document.getElementById('save-city-btn')?.addEventListener('click', async () => {
             const name = document.getElementById('city-name').value.trim();
             const discord_link = document.getElementById('city-discord').value.trim();
             if (!name || !discord_link) { alert('Название и ссылка на Discord обязательны'); return; }
             await fetch('/api/cities', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name,
-                    description: document.getElementById('city-desc').value,
-                    image_url: document.getElementById('city-image').value,
-                    discord_link
-                })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description: document.getElementById('city-desc').value, image_url: document.getElementById('city-image').value, discord_link })
             });
             document.getElementById('create-city-modal').style.display = 'none';
             document.getElementById('city-name').value = '';
@@ -298,9 +230,7 @@
             document.getElementById('city-discord').value = '';
             loadCities();
         });
-        document.getElementById('cancel-city-btn')?.addEventListener('click', () => {
-            document.getElementById('create-city-modal').style.display = 'none';
-        });
+        document.getElementById('cancel-city-btn')?.addEventListener('click', () => document.getElementById('create-city-modal').style.display = 'none');
 
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -319,14 +249,14 @@
         loadMessages('friends', 'chat-messages');
         loadMessages('news', 'news-messages');
         setInterval(() => {
-            if (document.querySelector('.tab.active').dataset.tab === 'chat') loadMessages('friends', 'chat-messages');
-            if (document.querySelector('.tab.active').dataset.tab === 'news') loadMessages('news', 'news-messages');
+            if (document.querySelector('.tab.active')?.dataset.tab === 'chat') loadMessages('friends', 'chat-messages');
+            if (document.querySelector('.tab.active')?.dataset.tab === 'news') loadMessages('news', 'news-messages');
         }, 5000);
 
         document.getElementById('chat-send')?.addEventListener('click', () => sendMessage('friends', 'chat-input'));
         document.getElementById('news-send')?.addEventListener('click', () => sendMessage('news', 'news-input'));
         document.getElementById('chat-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('friends', 'chat-input'); });
-        document.getElementById('news-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('news', 'news-input');
+        document.getElementById('news-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('news', 'news-input'); });
     </script>
 </body>
 </html>

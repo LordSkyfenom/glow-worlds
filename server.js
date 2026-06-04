@@ -74,7 +74,7 @@ passport.use(new DiscordStrategy({
   }
 }));
 
-// === ПРОВЕРКА ДОСТУПА К ФОРУМУ (через Bot Token) ===
+// === ПРОВЕРКА ДОСТУПА К ФОРУМУ ===
 async function checkForumAccess(req, res, next) {
   if (!req.user) return res.redirect('/auth/discord');
   
@@ -101,34 +101,6 @@ async function checkForumAccess(req, res, next) {
     next();
   }
 }
-
-// === ОТЛАДОЧНЫЙ МАРШРУТ ===
-app.get('/debug-roles', async (req, res) => {
-  if (!req.user) return res.redirect('/auth/discord');
-  
-  try {
-    const memberRes = await fetch(`https://discord.com/api/guilds/${process.env.DISCORD_GUILD_ID}/members/${req.user.id}`, {
-      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` }
-    });
-    
-    if (!memberRes.ok) {
-      return res.json({ error: 'Не удалось получить роли', status: memberRes.status });
-    }
-    
-    const memberData = await memberRes.json();
-    const userRoleIds = memberData.roles || [];
-    
-    res.json({
-      userId: req.user.id,
-      userName: req.user.username,
-      roleIds: userRoleIds,
-      hasForumRole: userRoleIds.includes(process.env.DISCORD_FORUM_ROLE_ID),
-      forumRoleId: process.env.DISCORD_FORUM_ROLE_ID
-    });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
-});
 
 // === Роуты страниц ===
 app.get('/', async (req, res) => {

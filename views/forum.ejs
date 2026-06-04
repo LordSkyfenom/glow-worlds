@@ -28,6 +28,29 @@
         .btn-green { background: #24af68; color: white; }
         .btn-red { background: #ff5555; color: white; }
         .delete-btn { background: none; border: none; color: red; cursor: pointer; font-size: 14px; margin-left: 10px; }
+        
+        /* Красивая кнопка создания города */
+        .create-city-btn {
+            background: linear-gradient(135deg, #24af68, #1e8e55);
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 25px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .create-city-btn:hover {
+            background: linear-gradient(135deg, #1e8e55, #156b42);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+        }
     </style>
 </head>
 <body>
@@ -77,11 +100,11 @@
 
             <!-- Вкладка Города -->
             <div id="cities" class="tab-content">
-                <button id="create-city-btn" class="btn-green" style="margin-bottom: 20px;">+ Создать город</button>
+                <button id="create-city-btn" class="create-city-btn">➕ Создать город</button>
                 <div id="cities-list" class="cities-list">Загрузка...</div>
             </div>
 
-            <!-- Вкладка Новости (оставляем как чат) -->
+            <!-- Вкладка Новости -->
             <div id="news" class="tab-content">
                 <div id="news-messages" class="messages">Загрузка...</div>
                 <div class="input-area">

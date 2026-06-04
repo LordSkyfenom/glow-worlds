@@ -22,12 +22,48 @@
         .city-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; }
         .city-card h3 { margin: 10px 0 5px; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: white; padding: 30px; border-radius: 20px; min-width: 300px; text-align: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 20px; min-width: 300px; text-align: center; max-width: 500px; }
         .modal-content input, .modal-content textarea { width: 100%; margin: 10px 0; padding: 8px; border-radius: 8px; border: 1px solid #ccc; }
         .modal-content button { margin: 5px; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; }
         .btn-green { background: #24af68; color: white; }
         .btn-red { background: #ff5555; color: white; }
         .delete-btn { background: none; border: none; color: red; cursor: pointer; font-size: 14px; margin-left: 10px; }
+        
+        /* Новая карточка города (картинка слева, описание справа) */
+        .city-detail {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            text-align: left;
+            flex-wrap: wrap;
+        }
+        .city-detail-img {
+            flex: 0 0 120px;
+            max-width: 120px;
+        }
+        .city-detail-img img {
+            width: 100%;
+            border-radius: 15px;
+            object-fit: cover;
+        }
+        .city-detail-info {
+            flex: 1;
+            min-width: 200px;
+        }
+        .city-detail-info h3 {
+            margin: 0 0 10px 0;
+            color: #24af68;
+        }
+        .city-detail-info p {
+            margin: 10px 0;
+            line-height: 1.4;
+        }
+        .city-detail-buttons {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
         
         /* Красивая кнопка создания города */
         .create-city-btn {
@@ -127,7 +163,7 @@
             </div>
         </div>
 
-        <!-- Модальное окно карточки города -->
+        <!-- Модальное окно карточки города (новый дизайн) -->
         <div id="city-card-modal" class="modal">
             <div class="modal-content" id="city-card-content"></div>
         </div>
@@ -205,12 +241,20 @@
             const content = document.getElementById('city-card-content');
             const canDelete = user && (city.owner_discord_id === user.id || user.isOwner);
             content.innerHTML = `
-                <h3>${escapeHtml(city.name)}</h3>
-                <img src="${city.image_url || '/images/default-city.png'}" style="max-width:100%; border-radius:15px; margin:10px 0;" onerror="this.src='/images/default-city.png'">
-                <p>${escapeHtml(city.description || 'Нет описания')}</p>
-                <button class="btn-green" onclick="joinCity('${city.discord_link}')">Вступить</button>
-                <button class="btn-red" onclick="closeCityCard()">Назад</button>
-                ${canDelete ? `<button class="btn-red" onclick="deleteCity(${city.id})">🗑️ Удалить город</button>` : ''}
+                <div class="city-detail">
+                    <div class="city-detail-img">
+                        <img src="${city.image_url || '/images/default-city.png'}" onerror="this.src='/images/default-city.png'">
+                    </div>
+                    <div class="city-detail-info">
+                        <h3>${escapeHtml(city.name)}</h3>
+                        <p>${escapeHtml(city.description || 'Нет описания')}</p>
+                        <div class="city-detail-buttons">
+                            <button class="btn-green" onclick="joinCity('${city.discord_link}')">Вступить</button>
+                            <button class="btn-red" onclick="closeCityCard()">Назад</button>
+                            ${canDelete ? `<button class="btn-red" onclick="deleteCity(${city.id})">🗑️ Удалить город</button>` : ''}
+                        </div>
+                    </div>
+                </div>
             `;
             modal.style.display = 'flex';
         }

@@ -114,14 +114,34 @@ async function checkForumAccess(req, res, next) {
 
 // === ОТЛАДОЧНЫЙ МАРШРУТ (проверка ролей) ===
 app.get('/debug-roles', async (req, res) => {
-  if (!req.user) return res.redirect('/auth/discord');
+  // Проверяем, залогинен ли пользователь
+  if (!req.user) {
+    return res.redirect('/auth/discord');
+  }
   
   try {
+    // Проверяем, есть ли бот
+    if (!discordBot || !discordBot.isReady()) {
+      return res.json({ error: 'Discord бот не запущен или не готов' });
+    }
+    
+    // Пытаемся получить сервер
     const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+    if (!guild) {
+      return res.json({ error: 'Сервер не найден. Проверьте DISCORD_GUILD_ID' });
+    }
+    
+    // Пытаемся получить участника
     const member = await guild.members.fetch(req.user.id);
+    if (!member) {
+      return res.json({ error: 'Пользователь не найден на сервере' });
+    }
+    
+    // Получаем роли
     const roles = member.roles.cache.map(r => ({ id: r.id, name: r.name }));
     
     res.json({
+      success: true,
       guildName: guild.name,
       guildId: guild.id,
       userName: member.user.username,
@@ -131,7 +151,11 @@ app.get('/debug-roles', async (req, res) => {
       forumRoleIdFromEnv: process.env.DISCORD_FORUM_ROLE_ID
     });
   } catch (err) {
-    res.json({ error: err.message });
+    console.error('❌ Ошибка в /debug-roles:', err);
+    res.json({ 
+      error: err.message,
+      hint: 'Проверьте: 1) Бот добавлен на сервер? 2) Правильный ли DISCORD_GUILD_ID? 3) У бота есть права?'
+    });
   }
 });
 

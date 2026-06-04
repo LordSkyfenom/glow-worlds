@@ -87,11 +87,22 @@ passport.use(new DiscordStrategy({
 // === Middleware проверки доступа к форуму ===
 async function checkForumAccess(req, res, next) {
   if (!req.user) return res.redirect('/auth/discord');
+  
   try {
+    console.log('🔍 Проверка доступа для:', req.user.username);
+    console.log('📌 GUILD_ID:', process.env.DISCORD_GUILD_ID);
+    console.log('📌 FORUM_ROLE_ID:', process.env.DISCORD_FORUM_ROLE_ID);
+    
     const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+    console.log('✅ Сервер найден:', guild.name);
+    
     const member = await guild.members.fetch(req.user.id);
     const userRoles = member.roles.cache.map(role => role.id);
+    console.log('📋 Роли пользователя:', userRoles);
+    
     const hasAccess = userRoles.includes(process.env.DISCORD_FORUM_ROLE_ID);
+    console.log('🎯 Доступ:', hasAccess);
+    
     req.hasForumAccess = hasAccess;
     next();
   } catch (err) {
@@ -100,6 +111,29 @@ async function checkForumAccess(req, res, next) {
     next();
   }
 }
+
+// === ОТЛАДОЧНЫЙ МАРШРУТ (проверка ролей) ===
+app.get('/debug-roles', async (req, res) => {
+  if (!req.user) return res.redirect('/auth/discord');
+  
+  try {
+    const guild = await discordBot.guilds.fetch(process.env.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(req.user.id);
+    const roles = member.roles.cache.map(r => ({ id: r.id, name: r.name }));
+    
+    res.json({
+      guildName: guild.name,
+      guildId: guild.id,
+      userName: member.user.username,
+      userId: member.id,
+      roles: roles,
+      hasForumRole: roles.some(r => r.id === process.env.DISCORD_FORUM_ROLE_ID),
+      forumRoleIdFromEnv: process.env.DISCORD_FORUM_ROLE_ID
+    });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
 
 // === Роуты страниц ===
 app.get('/', async (req, res) => {

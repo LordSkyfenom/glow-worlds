@@ -6,6 +6,7 @@ const DiscordStrategy = require('passport-discord').Strategy;
 const path = require('path');
 const { Pool } = require('pg');
 const Rcon = require('rcon');
+const { Client, EmbedBuilder } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,6 +19,37 @@ const pool = new Pool({
 
 // === Глобальная переменная для онлайна ===
 let currentOnline = { online: 0, max: 20 };
+
+// === Discord бот для уведомлений ===
+const discordBot = new Client({ intents: [] });
+discordBot.once('ready', () => {
+    console.log('🤖 Discord бот для уведомлений запущен');
+});
+discordBot.login(process.env.DISCORD_BOT_TOKEN).catch(err => {
+    console.error('❌ Ошибка входа Discord бота:', err.message);
+});
+
+async function sendDiscordDM(userId, title, fields, color = 0x24af68) {
+    if (!discordBot.isReady()) return;
+    try {
+        const user = await discordBot.users.fetch(userId);
+        if (user) {
+            const embed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle(title)
+                .setTimestamp();
+            
+            for (const field of fields) {
+                embed.addFields({ name: field.name, value: field.value, inline: field.inline || false });
+            }
+            
+            await user.send({ embeds: [embed] });
+            console.log(`✅ Уведомление отправлено ${user.username}`);
+        }
+    } catch (err) {
+        console.error('❌ Ошибка отправки в ЛС:', err.message);
+    }
+}
 
 // === RCON функция ===
 async function sendRconCommand(command) {
@@ -181,8 +213,19 @@ app.post('/create-order', async (req, res) => {
     'INSERT INTO orders (discord_id, discord_name, minecraft_nick, product_type, price, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
     [req.user.id, req.user.username, minecraft_nick, product.rows[0].name, price, 'pending']
   );
-  const paymentUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.MONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${result.rows[0].id}&sum=${price}&comment=order_${result.rows[0].id}&successURL=${process.env.BASE_URL}/donate`;
-  res.json({ orderId: result.rows[0].id, price, paymentUrl, success: true });
+  const orderId = result.rows[0].id;
+  const paymentUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.MONEY_WALLET}&quickpay-form=shop&targets=Заказ%20№${orderId}&sum=${price}&comment=order_${orderId}&successURL=${process.env.BASE_URL}/donate`;
+  
+  // Уведомление админу о новом заказе
+  await sendDiscordDM(process.env.DISCORD_ADMIN_ID, '🆕 Новый заказ!', [
+    { name: 'Заказ #', value: orderId.toString(), inline: true },
+    { name: 'Товар', value: product.rows[0].name, inline: true },
+    { name: 'Сумма', value: `${price} ₽`, inline: true },
+    { name: 'Игрок', value: req.user.username, inline: true },
+    { name: 'Minecraft ник', value: minecraft_nick, inline: true }
+  ]);
+  
+  res.json({ orderId, price, paymentUrl, success: true });
 });
 
 app.post('/api/mark-as-paid', async (req, res) => {
@@ -191,6 +234,14 @@ app.post('/api/mark-as-paid', async (req, res) => {
   const order = await pool.query('SELECT * FROM orders WHERE id = $1 AND discord_id = $2', [orderId, req.user.id]);
   if (order.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
   await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['waiting_confirmation', orderId]);
+  
+  // Уведомление админу, что заказ ожидает подтверждения
+  await sendDiscordDM(process.env.DISCORD_ADMIN_ID, '⏳ Заказ ожидает подтверждения!', [
+    { name: 'Заказ #', value: orderId.toString(), inline: true },
+    { name: 'Игрок', value: req.user.username, inline: true },
+    { name: 'Minecraft ник', value: order.rows[0].minecraft_nick, inline: true }
+  ], 0xffaa00);
+  
   res.json({ success: true });
 });
 
@@ -225,6 +276,14 @@ app.post('/api/admin/confirm-order', async (req, res) => {
     // Обновляем статус заказа
     await pool.query('UPDATE orders SET status = $1, confirmed_at = NOW() WHERE id = $2', ['confirmed', orderId]);
     
+    // Уведомление админу о подтверждении
+    await sendDiscordDM(process.env.DISCORD_ADMIN_ID, '✅ Заказ подтверждён!', [
+      { name: 'Заказ #', value: orderId.toString(), inline: true },
+      { name: 'Товар', value: product, inline: true },
+      { name: 'Игрок', value: order.rows[0].discord_name, inline: true },
+      { name: 'Minecraft ник', value: nick, inline: true }
+    ]);
+    
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -236,6 +295,12 @@ app.post('/api/admin/decline-order', async (req, res) => {
   if (!req.user || !req.user.isOwner) return res.status(403).json({ error: 'Forbidden' });
   const { orderId } = req.body;
   await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['cancelled', orderId]);
+  
+  // Уведомление админу об отклонении
+  await sendDiscordDM(process.env.DISCORD_ADMIN_ID, '❌ Заказ отклонён!', [
+    { name: 'Заказ #', value: orderId.toString(), inline: true }
+  ], 0xff5555);
+  
   res.json({ success: true });
 });
 

@@ -326,7 +326,7 @@
         document.getElementById('chat-send')?.addEventListener('click', () => sendMessage('friends', 'chat-input'));
         document.getElementById('news-send')?.addEventListener('click', () => sendMessage('news', 'news-input'));
         document.getElementById('chat-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('friends', 'chat-input'); });
-        document.getElementById('news-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('news', 'news-input'); });
+        document.getElementById('news-input')?.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage('news', 'news-input');
     </script>
 </body>
 </html>
